@@ -1,0 +1,1 @@
+export { useInwardAnalytics } from './useInward';

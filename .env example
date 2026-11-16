@@ -1,0 +1,38 @@
+# ============================================================
+# HOSSUR RUBBER MES - PRODUCTION ENVIRONMENT
+# ============================================================
+
+# ---------------------------
+# PostgreSQL
+# ---------------------------
+
+DATABASE_URL=postgresql://postgres:PASSWORD@127.0.0.1:5432/psp_rubber_mes
+POSTGRES_DB=psp_rubber_mes
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=PASSWORD
+
+# ---------------------------
+# Backend
+# ---------------------------
+API_PORT=3000
+JWT_SECRET=RANDOM_SECRET_KEY
+
+SUPER_ADMIN_USERNAME=superadmin
+SUPER_ADMIN_PASSWORD=Athu@pspsuperadmin20
+
+# ---------------------------
+# Frontend
+# ---------------------------
+WEB_PORT=3000
+
+# Set to 'true' to bypass login and auto-access as superadmin (development only)
+NEXT_PUBLIC_DEVELOPMENT_MODE=true
+
+# IMPORTANT:
+# Replace SERVER_IP with the actual static LAN IP of the MES server.
+NEXT_PUBLIC_API_URL=http://192.168.1.30:3000
+
+# ---------------------------
+# PLC Service
+# ---------------------------
+PLC_SERVICE_PORT=3002

@@ -1,0 +1,80 @@
+services:
+  postgres:
+    image: postgres:16-bookworm
+    container_name: rubber-mes-postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    image: rubber-mes-production-api:latest
+    container_name: rubber-mes-api
+    restart: unless-stopped
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: ${API_PORT}
+      JWT_SECRET: ${JWT_SECRET}
+      SUPER_ADMIN_USERNAME: ${SUPER_ADMIN_USERNAME}
+      SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD}
+      DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}"
+      PLC_SERVICE_URL: http://plc-service:3002
+
+    command: >
+      sh -c "npx prisma migrate deploy --schema=api/prisma/schema.prisma && node api/prisma/seed-super-admin.js && node api/dist/main.js"
+
+    ports:
+      - "${API_PORT}:3000"
+
+  web:
+    image: rubber-mes-production-web:latest
+    container_name: rubber-mes-web
+    restart: unless-stopped
+
+    depends_on:
+      - api
+
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+
+    ports:
+      - "${WEB_PORT}:3001"
+
+  plc-service:
+    image: rubber-mes-production-plc-service:latest
+    container_name: rubber-mes-plc-service
+    restart: unless-stopped
+
+    depends_on:
+      - api
+
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: ${PLC_SERVICE_PORT}
+      BACKEND_URL: http://api:3000
+
+    ports:
+      - "${PLC_SERVICE_PORT}:3002"
+
+volumes:
+  postgres_data:
+    name: rubber_mes_postgres_data

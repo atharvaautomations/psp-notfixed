@@ -1,0 +1,714 @@
+// @ts-ignore – Prisma type doesn't expose relation ordering, but it works at runtime
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum QrState {
+  CREATED
+  RESERVED
+  ISSUED
+  CONSUMED
+}
+
+enum StepType {
+  KNEADER
+  MIXING
+}
+
+enum ExecutionMode {
+  BULK
+  SEQUENTIAL
+}
+
+enum ExecutionStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  CANCELLED
+}
+
+enum BatchExecutionStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+}
+
+enum BatchProcessStatus {
+  PENDING
+  READY
+  RUNNING
+  COMPLETED
+}
+
+enum IngredientExecutionStatus {
+  PENDING
+  WEIGHED
+  CONSUMED
+  CANCELLED
+}
+
+enum MasterBatchStatus {
+  CREATED
+  IN_STOCK
+  CONSUMED
+  SCRAPPED
+}
+
+enum KneaderExecutionStatus {
+  READY
+  RUNNING
+  COMPLETED
+}
+
+enum MixingExecutionStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum FinalBatchStatus {
+  CREATED
+  CONSUMED
+}
+
+enum QcStatus {
+  PASS
+  FAIL
+}
+
+enum RecipeWorkflow {
+  KNEADER_ONLY
+  KNEADER_AND_MIXING
+  MIXING_FINAL_BATCH
+  MIXING_MASTER_AND_FINAL_BATCH
+}
+
+enum RecipeStepBatchType {
+  MASTER_BATCH
+  FINAL_BATCH
+}
+
+enum UserRole {
+  STORES
+  RUBBER_TECHNOLOGIST
+  OPERATOR
+  QUALITY_CONTROL
+  SUPER_ADMIN
+}
+
+enum SystemDeviceType {
+  PLC
+  PRINTER
+  SERVER
+  CLIENT_PC
+  NETWORK_DEVICE
+  OTHER
+}
+
+enum SystemServiceType {
+  BACKEND
+  FRONTEND
+  DATABASE
+  PLC_SERVICE
+  PRINTER_SERVICE
+  OTHER
+}
+
+model InwardEntry {
+  id            Int            @id @default(autoincrement())
+  materialName  String
+  materialNumber String?
+  supplierName  String
+  batchNumber   String?
+  batchDate     DateTime?
+  grnNumber     String?
+  grnDate       DateTime?
+  shelfLife     String?
+  qcDate        DateTime?
+  supplierInvoiceNumber String?
+  invoiceDate   DateTime?
+  quantity      Float
+  unit          String
+  baseQuantity  Float?
+  baseUnit      String?
+  bagWeight     Float?
+  bagWeightBase Float?
+  storedAsWhole Boolean        @default(false)
+  mfgDate       DateTime
+  expDate       DateTime
+  status        String
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  qrCodes       InwardQrCode[]
+}
+
+model InwardQrCode {
+  id    Int    @id @default(autoincrement())
+  qrId  String @unique
+  bagNo Int
+  label String
+
+  inwardId Int
+  inward   InwardEntry @relation(fields: [inwardId], references: [id], onDelete: Cascade)
+
+  state               QrState   @default(CREATED)
+  outwardId           Int?
+  printed             Boolean   @default(false)
+  scannedAtOutward    DateTime?
+  scannedAtProduction DateTime?
+  consumedAt          DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  // Optional: quick lookup index (not required—tag already unique)
+  // @@index([tag])
+}
+
+model OutwardEntry {
+  id           Int    @id @default(autoincrement())
+  materialName String
+  supplierName String?
+  quantity     Float
+  unit         String @default("KG")
+  baseQuantity Float?
+  baseUnit     String?
+
+  issuedTo String
+  purpose  String?
+  remarks  String?
+
+  qrScanStatus Json?
+  status       String @default("Pending")
+
+  bagsIssued Int?
+
+  date      DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MaterialStock {
+  id            Int      @id @default(autoincrement())
+  materialName  String
+  supplierName  String?
+  totalQuantity Float
+  unit          String
+  baseQuantity  Float?
+  baseUnit      String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([materialName, supplierName])
+  @@index([materialName])
+  @@index([supplierName])
+}
+
+model Ingredient {
+  id                   Int                   @id @default(autoincrement())
+  ingredientCode       String                @unique
+  name                 String
+  type                 String
+  customType           String?
+  materialName         String
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  bins                 BinAssignment[]
+  recipeLinks          StepIngredient[]
+  executionIngredients ExecutionIngredient[]
+}
+
+model BinAssignment {
+  id              Int        @id @default(autoincrement())
+  binNumber       String     @unique
+  ingredientId    Int        @unique
+  ingredient      Ingredient @relation(fields: [ingredientId], references: [id])
+  minQuantity     Float
+  maxQuantity     Float
+  currentQuantity Float      @default(0)
+  unit            String     @default("KG")
+  baseUnit        String?
+  baseMinQuantity Float?
+  baseMaxQuantity Float?
+  baseCurrentQuantity Float?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+}
+
+model Recipe {
+  id          Int      @id @default(autoincrement())
+  recipeCode  String
+  name        String
+  description String?
+  workflow    RecipeWorkflow
+  version     Int      @default(1)
+  parentRecipeId Int?
+  parentRecipe  Recipe? @relation("RecipeVersions", fields: [parentRecipeId], references: [id])
+  childVersions   Recipe[] @relation("RecipeVersions")
+  isActive    Boolean  @default(true)
+  deletedAt   DateTime?
+  permanentlyDeletedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  steps      RecipeStep[]
+  executions Execution[]
+
+  masterBatches MasterBatch[]
+  finalBatches  FinalBatch[]
+
+  qcSpecification QcSpecification?
+
+  @@unique([recipeCode, version])
+  @@index([recipeCode])
+  @@index([parentRecipeId])
+  @@index([deletedAt])
+}
+
+model RecipeStep {
+  id       Int    @id @default(autoincrement())
+  recipeId Int
+  recipe   Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  stepType  StepType
+  batchType RecipeStepBatchType
+
+  sequenceNumber Int
+  timerSeconds   Int
+
+  ingredients          StepIngredient[]
+  executionIngredients ExecutionIngredient[]
+
+  @@index([recipeId])
+}
+
+model StepIngredient {
+  id     Int        @id @default(autoincrement())
+  stepId Int
+  step   RecipeStep @relation(fields: [stepId], references: [id], onDelete: Cascade)
+
+  ingredientId Int
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id])
+
+  quantity  Float
+  tolerance Float
+  unit      String
+  baseQuantity Float?
+  baseUnit    String?
+  baseTolerance Float?
+
+  executionIngredients ExecutionIngredient[]
+
+  @@index([stepId])
+}
+
+model Execution {
+  id            Int    @id @default(autoincrement())
+  executionCode String @unique
+
+  recipeId      Int
+  recipe        Recipe @relation(fields: [recipeId], references: [id])
+  recipeCode    String
+  recipeName    String
+  recipeVersion Int
+
+  mode         ExecutionMode
+  totalBatches Int
+
+  status ExecutionStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  batches ExecutionBatch[]
+
+  @@index([recipeId])
+}
+
+model ExecutionBatch {
+  id Int @id @default(autoincrement())
+
+  executionId Int
+  execution   Execution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  batchNumber Int
+
+  status BatchExecutionStatus @default(PENDING)
+
+  kneaderStatus BatchProcessStatus @default(PENDING)
+  mixingStatus  BatchProcessStatus @default(PENDING)
+
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  ingredients ExecutionIngredient[]
+
+  kneaderExecution KneaderExecution?
+  masterBatch      MasterBatch?
+  mixingExecution  MixingExecution?
+  finalBatch       FinalBatch?
+
+  @@unique([executionId, batchNumber])
+  @@index([executionId])
+}
+
+model ExecutionIngredient {
+  id Int @id @default(autoincrement())
+
+  executionBatchId Int
+  executionBatch   ExecutionBatch @relation(fields: [executionBatchId], references: [id], onDelete: Cascade)
+
+  recipeStepId Int
+  recipeStep   RecipeStep @relation(fields: [recipeStepId], references: [id])
+
+  stepIngredientId Int
+  stepIngredient   StepIngredient @relation(fields: [stepIngredientId], references: [id])
+
+  ingredientId   Int
+  ingredient     Ingredient @relation(fields: [ingredientId], references: [id])
+  ingredientCode String
+  ingredientName String
+  ingredientType String
+  materialName   String
+
+  stepSequence Int
+  stepType     StepType
+  batchType    RecipeStepBatchType
+  timerSeconds Int?
+
+  qrId String @unique
+
+  plcIngredientIndex Int
+
+  expectedQuantity Float
+  tolerance        Float
+  unit             String
+  baseExpectedQuantity Float?
+  baseTolerance Float?
+  baseActualQuantity Float?
+  baseUnit      String?
+
+  status         IngredientExecutionStatus @default(PENDING)
+  kneaderScanned Boolean                   @default(false)
+  mixingScanned  Boolean                   @default(false)
+
+  weighedAt   DateTime?
+  completedAt DateTime?
+
+  actualQuantity Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([executionBatchId])
+  @@index([ingredientId])
+  @@index([qrId])
+}
+
+model MasterBatch {
+  id Int @id @default(autoincrement())
+
+  qrId String @unique
+
+  executionBatchId Int            @unique
+  executionBatch   ExecutionBatch @relation(fields: [executionBatchId], references: [id], onDelete: Cascade)
+
+  recipeId Int
+  recipe   Recipe @relation(fields: [recipeId], references: [id])
+
+  status MasterBatchStatus @default(CREATED)
+
+  createdAt  DateTime  @default(now())
+  consumedAt DateTime?
+
+  @@index([recipeId])
+}
+
+model KneaderExecution {
+  id Int @id @default(autoincrement())
+
+  executionBatchId Int            @unique
+  executionBatch   ExecutionBatch @relation(fields: [executionBatchId], references: [id], onDelete: Cascade)
+
+  currentBatchType RecipeStepBatchType @default(FINAL_BATCH)
+
+  currentStepSequence Int @default(1)
+
+  recipeWritten Boolean @default(false)
+
+  status KneaderExecutionStatus @default(READY)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MixingExecution {
+  id Int @id @default(autoincrement())
+
+  executionBatchId Int            @unique
+  executionBatch   ExecutionBatch @relation(fields: [executionBatchId], references: [id], onDelete: Cascade)
+
+  currentBatchType RecipeStepBatchType @default(FINAL_BATCH)
+
+  currentStageSequence Int @default(1)
+
+  recipeWritten Boolean @default(false)
+
+  status MixingExecutionStatus @default(PENDING)
+
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  createdAt DateTime @default(now())
+}
+
+model FinalBatch {
+  id Int @id @default(autoincrement())
+
+  qrId String @unique
+
+  executionBatchId Int            @unique
+  executionBatch   ExecutionBatch @relation(fields: [executionBatchId], references: [id], onDelete: Cascade)
+  recipeId         Int
+  recipe           Recipe         @relation(fields: [recipeId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  consumedAt DateTime?
+
+  status FinalBatchStatus @default(CREATED)
+
+  qcInspections QcInspection[]
+
+  @@index([recipeId])
+}
+
+model QcSpecification {
+  id Int @id @default(autoincrement())
+
+  recipeId Int    @unique
+  recipe   Recipe @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  hardness        Float?
+  tensile         Float?
+  elongation      Float?
+  specificGravity Float?
+  compressionSet  Float?
+
+  qcInspections QcInspection[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model QcInspection {
+  id Int @id @default(autoincrement())
+
+  finalBatchId Int
+  finalBatch   FinalBatch @relation(fields: [finalBatchId], references: [id], onDelete: Cascade)
+
+  qcSpecificationId     Int
+  qcSpecification       QcSpecification @relation(fields: [qcSpecificationId], references: [id])
+  hardnessTarget        Float?
+  tensileTarget         Float?
+  elongationTarget      Float?
+  specificGravityTarget Float?
+  compressionSetTarget  Float?
+
+  hardnessActual        Float?
+  tensileActual         Float?
+  elongationActual      Float?
+  specificGravityActual Float?
+  compressionSetActual  Float?
+
+  status QcStatus
+
+  remarks String?
+
+  testedAt DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([finalBatchId])
+  @@index([qcSpecificationId])
+}
+
+model User {
+  id Int @id @default(autoincrement())
+
+  username String @unique
+  name     String
+  password String
+
+  role UserRole
+
+  isActive Boolean @default(true)
+
+  lastLoginAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([role])
+  @@index([isActive])
+}
+
+model SystemDevice {
+  id Int @id @default(autoincrement())
+
+  key  String @unique
+  name String
+
+  type SystemDeviceType
+
+  host String
+  port Int?
+
+  protocol String?
+
+  enabled Boolean @default(true)
+
+  description String?
+
+  sortOrder Int @default(0)
+
+  metadata Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type])
+  @@index([enabled])
+}
+
+model SystemService {
+  id Int @id @default(autoincrement())
+
+  key  String @unique
+  name String
+
+  type SystemServiceType
+
+  host String
+  port Int
+
+  healthPath String?
+
+  enabled Boolean @default(true)
+
+  description String?
+
+  sortOrder Int @default(0)
+
+  metadata Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([type])
+  @@index([enabled])
+}
+
+model SystemSetting {
+  id Int @id @default(autoincrement())
+
+  key String @unique
+
+  value String?
+
+  description String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ActivityLog {
+  id           Int      @id @default(autoincrement())
+  moduleType   String
+  activityType String
+  referenceId  String?
+  bagNumber    Int?
+  qrId         String?
+  grnNumber    String?
+  binNumber    String?
+  userId       Int?
+  username     String?
+  status       String   @default("Success")
+  errorMessage String?
+  metadata     Json?
+  createdAt    DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([moduleType])
+  @@index([activityType])
+  @@index([referenceId])
+  @@index([userId])
+  @@index([status])
+}
+
+model Requisition {
+  id                Int      @id @default(autoincrement())
+  requisitionNumber String   @unique
+  materialName      String
+  materialNumber    String?
+  supplierName      String
+  batchNumber       String?
+  requiredQuantity  Float
+  unit              String
+  baseQuantity      Float?
+  baseUnit          String?
+  numberOfBags      Int?
+  weightPerBag      Float?
+  sourceInwardId    Int?
+  sourceInwardBatch String?
+  requestedBy       String
+  requestedAt       DateTime @default(now())
+  status            String   @default("Pending")
+  approvedBy        String?
+  approvedAt        DateTime?
+  rejectedBy        String?
+  rejectedAt        DateTime?
+  rejectionReason   String?
+  fulfilledBy       String?
+  fulfilledAt       DateTime?
+  linkedOutwardId   Int?
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([requisitionNumber])
+  @@index([status])
+  @@index([createdAt])
+  @@index([sourceInwardId])
+  @@index([linkedOutwardId])
+}
+
+model Alert {
+  id          Int      @id @default(autoincrement())
+  title       String
+  description String
+  type        String   // MIN_STOCK or EXPIRY
+  materialName String
+  supplierName String?
+  unit        String
+  threshold   Int?     // percentage (15, 10, 5), days (15, 7, 3, 1) or 0 for expired
+  batchNumber String?  // expiry alerts only
+  expiryDate  DateTime? // expiry alerts only - used to keep one alert per batch/expiry
+  status      String   @default("Active") // Active | Cleared
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  clearedAt   DateTime?
+
+  @@index([status])
+  @@index([type])
+  @@index([materialName])
+  @@index([supplierName])
+  @@index([createdAt])
+  @@index([expiryDate])
+}

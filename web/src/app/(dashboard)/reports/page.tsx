@@ -1,0 +1,247 @@
+'use client';
+
+import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import Link from 'next/link';
+import { Plus } from 'lucide-react';
+
+import api from '@/lib/api';
+import {
+  Header,
+  PageContainer,
+  Card,
+  StatsGrid,
+} from '@/components/global';
+import { Button } from '@/components/ui/button';
+import { KpiCard } from '@/components/ui/kpi-card';
+import { DataTableShell } from '@/components/ui/datatable-shell';
+import FilterBar from '@/components/ui/filter-bar';
+
+type ReportItem = {
+  id: number;
+  reportType: string;
+  title: string;
+  generatedBy: string;
+  generatedAt: string;
+  status: string;
+  fileUrl?: string | null;
+};
+
+type ReportFilters = {
+  search?: string;
+  status?: string;
+  sort?: 'asc' | 'desc';
+};
+
+export default function ReportsPage() {
+  const { data: reports = [], isLoading } = useQuery<ReportItem[]>({
+    queryKey: ['reports'],
+    queryFn: async () => {
+      const res = await api.get('/reports');
+      return Array.isArray(res.data) ? res.data : [];
+    },
+  });
+
+  const [filters, setFilters] = useState<ReportFilters>({
+    search: '',
+    status: 'All',
+    sort: 'desc',
+  });
+
+  const filteredData = useMemo(() => {
+    let result = [...reports];
+
+    if (filters.search?.trim()) {
+      const search = filters.search!.toLowerCase();
+      result = result.filter(
+        (item) =>
+          item.title.toLowerCase().includes(search) ||
+          item.reportType.toLowerCase().includes(search) ||
+          item.generatedBy.toLowerCase().includes(search)
+      );
+    }
+
+    if (filters.status !== 'All') {
+      result = result.filter((item) => item.status === filters.status);
+    }
+
+    if (filters.sort) {
+      result.sort((a, b) => {
+        const ta = new Date(a.generatedAt).getTime();
+        const tb = new Date(b.generatedAt).getTime();
+        return filters.sort === 'asc' ? ta - tb : tb - ta;
+      });
+    }
+
+    return result;
+  }, [reports, filters]);
+
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    reports.forEach((r) => {
+      counts[r.status] = (counts[r.status] || 0) + 1;
+    });
+    return counts;
+  }, [reports]);
+
+  return (
+    <PageContainer>
+      <Header
+        title="Reports"
+        description="Production and inventory reports"
+        icon="📊"
+      />
+
+      <StatsGrid columns={4}>
+        <KpiCard
+          title="Total Reports"
+          value={reports.length}
+          gradient="blue"
+          icon="📊"
+          trend={{ value: 0, positive: true }}
+        />
+        <KpiCard
+          title="Generated"
+          value={statusCounts['GENERATED'] || 0}
+          gradient="green"
+          icon="✓"
+          trend={{ value: 0, positive: true }}
+        />
+        <KpiCard
+          title="Pending"
+          value={statusCounts['PENDING'] || 0}
+          gradient="blue"
+          icon="⏳"
+          trend={{ value: 0, positive: true }}
+        />
+        <KpiCard
+          title="Failed"
+          value={statusCounts['FAILED'] || 0}
+          gradient="red"
+          icon="✕"
+          trend={{ value: 0, positive: true }}
+        />
+      </StatsGrid>
+
+      <div className="mt-8 flex justify-between items-center">
+        <div>
+          <h2 className="text-xl font-semibold text-gray-900">
+            All Reports
+          </h2>
+          <p className="text-gray-600 text-sm">
+            View and download generated production reports
+          </p>
+        </div>
+        <Link href="/reports/add">
+          <Button
+            className="bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-2"
+          >
+            <Plus size={16} />
+            Generate Report
+          </Button>
+        </Link>
+      </div>
+
+      <Card noPadding>
+        <div className="p-6 border-b border-gray-200">
+          <FilterBar
+            filters={filters as Record<string, string>}
+            setFilters={(updater) => {
+              const updated = updater(filters);
+              setFilters({
+                search: updated.search ?? '',
+                status: (updated.status as ReportFilters['status']) ?? 'All',
+                sort: (updated.sort as ReportFilters['sort']) ?? 'desc',
+              });
+            }}
+          />
+        </div>
+
+        <div className="overflow-x-auto">
+          <DataTableShell<ReportItem>
+            loading={isLoading}
+            data={filteredData}
+            columns={[
+              {
+                key: 'title',
+                header: 'Report Title',
+                render: (r) => (
+                  <div className="font-semibold text-gray-900">{r.title}</div>
+                ),
+              },
+              {
+                key: 'reportType',
+                header: 'Type',
+                render: (r) => (
+                  <span className="text-gray-900">{r.reportType}</span>
+                ),
+              },
+              {
+                key: 'generatedBy',
+                header: 'Generated By',
+                render: (r) => (
+                  <span className="text-gray-600">{r.generatedBy}</span>
+                ),
+              },
+              {
+                key: 'generatedAt',
+                header: 'Generated At',
+                render: (r) => (
+                  <span className="text-gray-600 text-sm">
+                    {new Date(r.generatedAt).toLocaleDateString()}
+                  </span>
+                ),
+              },
+              {
+                key: 'status',
+                header: 'Status',
+                render: (r) => (
+                  <span
+                    className={`px-2 py-1 text-xs rounded-full font-medium ${
+                      r.status === 'GENERATED'
+                        ? 'bg-green-100 text-green-700'
+                        : r.status === 'PENDING'
+                          ? 'bg-yellow-100 text-yellow-700'
+                          : 'bg-red-100 text-red-700'
+                    }`}
+                  >
+                    {r.status}
+                  </span>
+                ),
+              },
+              {
+                key: 'actions',
+                header: 'Actions',
+                render: (r) => (
+                  <div className="flex gap-2">
+                    {r.fileUrl ? (
+                      <a
+                        href={r.fileUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm text-blue-600 hover:underline"
+                      >
+                        Download
+                      </a>
+                    ) : (
+                      <Button variant="outline" size="sm" disabled>
+                        N/A
+                      </Button>
+                    )}
+                  </div>
+                ),
+              },
+            ]}
+          />
+        </div>
+      </Card>
+
+      {reports.length === 0 && !isLoading && (
+        <div className="mt-8 flex flex-col items-center justify-center py-12 text-center">
+          <div className="text-4xl mb-4">📊</div>
+          <p className="text-sm text-gray-500">No reports found.</p>
+        </div>
+      )}
+    </PageContainer>
+  );
+}

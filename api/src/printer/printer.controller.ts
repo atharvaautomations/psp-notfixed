@@ -1,0 +1,94 @@
+import { Controller, Post, Get, Body } from '@nestjs/common';
+import { PrinterService } from './printer.service';
+import { WeighingPrinterService } from './services/weighing-printer.service';
+import { MixingPrinterService } from './services/mixing-printer.service';
+import { QcPrinterService } from './services/qc-printer.service';
+
+@Controller('printer')
+export class PrinterController {
+  constructor(
+    private readonly printerService: PrinterService,
+    private readonly weighingPrinterService: WeighingPrinterService,
+    private readonly mixingPrinterService: MixingPrinterService,
+    private readonly qcPrinterService: QcPrinterService
+  ) {}
+
+  @Post('print')
+  async printLabel(@Body() body: { qrId: string }) {
+    await this.printerService.printLabel(body.qrId);
+    return { success: true, message: 'Label printed successfully' };
+  }
+
+  @Post('qc/print')
+  async printQcLabel(
+    @Body()
+    body: {
+      qrId: string;
+      recipeCode: string;
+      batchNumber: number;
+      qcResult: 'PASS' | 'FAIL';
+    }
+  ) {
+    await this.qcPrinterService.printQcLabel(body);
+    return { success: true, message: 'QC label printed successfully' };
+  }
+
+  @Post('print-batch')
+  async printBatch(@Body() body: { qrCodes: Array<{ qrId: string }> }) {
+    const printed = await this.printerService.printBatch(body.qrCodes);
+    return {
+      success: true,
+      printed,
+      message: `${printed} label(s) printed successfully`,
+    };
+  }
+
+  @Post('weighing/print')
+  async printWeighing(@Body() body: { qrId: string }) {
+    await this.weighingPrinterService.printLabel(body.qrId);
+
+    return {
+      success: true,
+    };
+  }
+
+  @Post('weighing/print-batch')
+  async printWeighingBatch(@Body() body: { qrCodes: Array<{ qrId: string }> }) {
+    await this.weighingPrinterService.printBatch(body.qrCodes);
+
+    return {
+      success: true,
+    };
+  }
+
+  @Post('mixing/master-batch')
+  async printMasterBatch(
+    @Body() body: { qrId: string; recipeCode: string; batchNumber: number }
+  ) {
+    return this.mixingPrinterService.printMasterBatch(body);
+  }
+
+  @Post('mixing/final-batch')
+  async printFinalBatch(
+    @Body() body: { qrId: string; recipeCode: string; batchNumber: number }
+  ) {
+    return this.mixingPrinterService.printFinalBatch(body);
+  }
+
+  @Get('test')
+  async testPrinter() {
+    const connected = await this.printerService.testConnection();
+    return { connected };
+  }
+
+  @Get('status')
+  async getStatus() {
+    return this.printerService.getStatus();
+  }
+
+  @Get('network-info')
+  async getNetworkInfo() {
+    const info = await this.printerService.getNetworkInfo();
+    return { info };
+  }
+}
