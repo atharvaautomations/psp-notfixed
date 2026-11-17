@@ -4,12 +4,11 @@ import { PrinterLabelData } from '../types/printer-label-data';
  * Inward material label - 100mm x 150mm portrait (203 dpi => 800 x 1200 dots).
  *
  * Header : logo + PREMIER SEALING PRODUCTS (centered) + subtitle
- * Left   : key on one line, value directly below it
- * Right  : QR ID box aligned with the quantity-to-expiry rows
- * Bottom : QC Date and QC Sign side by side, blank ruled space underneath
+ * Body   : horizontal key-value pairs (KEY: VALUE) with fixed value column
+ * Bottom : QC Date and QC Sign side by side, QR code centered at bottom
  *
- * Font style matches the original label set: printer font "0", header 18x15,
- * body 9x9 and small 7x6.
+ * Font style matches the original label set: printer font "0",
+ * header 18x15, body 10x10 (increased from 9x9), small 7x6.
  */
 export function generateTSPL(data: PrinterLabelData): string {
   const unit = data.unit || '';
@@ -33,29 +32,37 @@ export function generateTSPL(data: PrinterLabelData): string {
     'TEXT 267,76,"0",0,9,9,"MATERIAL INWARD LABEL"',
     'BAR 16,124,772,3',
 
-    // Left column - key with value directly below
-    field('MATERIAL NAME', data.materialName, 140, 28),
-    field('BATCH NUMBER', data.batchNumber, 220, 28),
-    field('GRN NO. / DATE', paired(data.grnNumber, data.grnDate), 300, 30),
-    field('BATCH NO. / DATE', paired(data.batchNumber, data.batchDate), 380, 30),
-    field('SUPPLIER NAME', data.supplierName, 460, 28),
-    field('QUANTITY (PER BAG WEIGHT)', quantityPerBag, 540, 18),
-    field('SHELF LIFE', data.shelfLife, 620, 18),
-    field('MANUFACTURING DATE', formatDate(data.mfgDate), 700, 18),
-    field('EXPIRY DATE', formatDate(data.expDate), 780, 18),
+    // Horizontal key-value rows - fixed value column at x=320
+    // Row spacing: 42 dots (increased for better readability), starting at y=140
+    kvField('MATERIAL NAME:', toUpper(data.materialName), 140),
+    kvField('BATCH NUMBER:', toUpper(data.batchNumber), 182),
+    kvField('GRN NO. / DATE:', toUpper(paired(data.grnNumber, data.grnDate)), 224),
+    kvField('BATCH NO. / DATE:', toUpper(paired(data.batchNumber, data.batchDate)), 266),
+    kvField('SUPPLIER NAME:', toUpper(data.supplierName), 308),
+    kvField('QUANTITY (PER BAG):', toUpper(quantityPerBag), 350),
+    kvField('SHELF LIFE:', toUpper(data.shelfLife), 392),
+    kvField('MANUFACTURING DATE:', toUpper(formatDate(data.mfgDate)), 434),
+    kvField('EXPIRY DATE:', toUpper(formatDate(data.expDate)), 476),
 
-    // QR ID box - right side, aligned with the quantity-to-expiry rows
-    'BOX 540,540,776,826,3',
-    `QRCODE 583,554,M,6,A,0,M2,"${escapeTsplText(data.qrId)}"`,
-    'TEXT 626,712,"0",0,9,9,"QR ID"',
-    `TEXT 590,740,"0",0,7,6,"${escapeTsplText(truncate(data.qrId, 20))}"`,
+    // Separator before QC section
+    'BAR 16,520,772,3',
 
     // QC entries - side by side, blank ruled space underneath for handwriting
-    'BAR 16,880,772,3',
-    'TEXT 40,915,"0",0,9,9,"QC DATE :"',
-    'TEXT 420,915,"0",0,9,9,"QC SIGN :"',
-    'BAR 40,1110,360,3',
-    'BAR 420,1110,740,3',
+    'TEXT 40,545,"0",0,10,10,"QC DATE:"',
+    'TEXT 420,545,"0",0,10,10,"QC SIGN:"',
+    'BAR 40,670,360,3',
+    'BAR 420,670,740,3',
+
+    // QR code section - bottom center, enlarged & perfectly centered
+    // QR box: 320x320 dots (x=240 to 560, centered at x=400), y=700 to 1020
+    'BOX 240,700,560,1020,3',
+    // QR code: cell size 10, centered in box (box center x=400, y=860)
+    // QR code top-left at x=280, y=740 (320-160)/2 = 80 offset from box edge
+    `QRCODE 300,760,M,10,A,0,M2,"${escapeTsplText(data.qrId)}"`,
+    // QR ID heading: larger font, centered at x=400
+    'TEXT 350,1035,"0",0,14,14,"QR ID"',
+    // QR ID value: larger font, centered, with clear gap from heading
+    `TEXT 310,1080,"0",0,10,9,"${escapeTsplText(truncate(toUpper(data.qrId), 28))}"`,
 
     'PRINT 1,1',
     '',
@@ -64,17 +71,16 @@ export function generateTSPL(data: PrinterLabelData): string {
   return lines.join('\r\n');
 }
 
-function field(
-  label: string,
-  value: unknown,
-  labelY: number,
-  maxChars = 28
-): string {
-  const text = truncate(String(value ?? '').trim() || '-', maxChars);
+function kvField(label: string, value: string, y: number): string {
+  const keyX = 40;
+  const valueX = 320;
+
+  const truncatedLabel = truncate(label, 30);
+  const truncatedValue = truncate(value || '-', 55);
 
   return [
-    `TEXT 40,${labelY},"0",0,9,9,"${escapeTsplText(label)}"`,
-    `TEXT 40,${labelY + 26},"0",0,9,9,"${escapeTsplText(text)}"`,
+    `TEXT ${keyX},${y},"0",0,10,10,"${escapeTsplText(truncatedLabel)}"`,
+    `TEXT ${valueX},${y},"0",0,10,10,"${escapeTsplText(truncatedValue)}"`,
   ].join('\r\n');
 }
 
@@ -119,4 +125,8 @@ function truncate(value: string, max: number): string {
 
 function escapeTsplText(value: string): string {
   return String(value ?? '').replace(/"/g, "'");
+}
+
+function toUpper(value: unknown): string {
+  return String(value ?? '').toUpperCase();
 }
