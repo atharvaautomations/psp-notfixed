@@ -56,6 +56,7 @@ export function buildExecutionIngredients(
 
           expectedQuantity: ingredient.quantity,
           tolerance: ingredient.tolerance,
+          unit: ingredient.unit,
 
           status: IngredientExecutionStatus.PENDING,
         });
