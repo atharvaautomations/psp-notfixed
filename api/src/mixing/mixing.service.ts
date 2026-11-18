@@ -18,6 +18,7 @@ import {
 } from '@prisma/client';
 import { ScanIngredientDto } from './dto/scan-ingredient.dto';
 import { CompleteStageDto } from './dto/complete-stage.dto';
+import { calculateShift } from '../common/utils/shift-calculator';
 
 @Injectable()
 export class MixingService {
@@ -73,6 +74,22 @@ export class MixingService {
       return {
         result: MixingResult.MASTER_BATCH_ALREADY_USED,
       };
+    }
+
+    // Check 24-hour restriction for Master-to-Final Batch transition
+    if (masterBatch.consumedAt) {
+      const masterBatchCompletedAt = new Date(masterBatch.consumedAt);
+      const now = new Date();
+      const hoursElapsed = (now.getTime() - masterBatchCompletedAt.getTime()) / (1000 * 60 * 60);
+
+      if (hoursElapsed < 24) {
+        const remainingHours = Math.ceil(24 - hoursElapsed);
+        return {
+          result: MixingResult.MASTER_BATCH_NOT_ELIGIBLE,
+          remainingHours,
+          eligibleAt: new Date(masterBatchCompletedAt.getTime() + 24 * 60 * 60 * 1000),
+        };
+      }
     }
 
     const mixingExecution = masterBatch.executionBatch.mixingExecution;
@@ -504,13 +521,16 @@ export class MixingService {
       };
     }
 
+    const completedAt = new Date();
+    const shift = calculateShift(completedAt);
+
     await tx.mixingExecution.update({
       where: {
         executionBatchId: batch.id,
       },
       data: {
         status: MixingExecutionStatus.COMPLETED,
-        completedAt: new Date(),
+        completedAt,
       },
     });
 
@@ -521,17 +541,31 @@ export class MixingService {
       data: {
         mixingStatus: BatchProcessStatus.COMPLETED,
         status: BatchExecutionStatus.COMPLETED,
-        completedAt: new Date(),
+        completedAt,
       },
     });
 
     const qrId = `FB-${batch.execution.executionCode}-B${batch.batchNumber}`;
+
+    // Determine expiry date for Final Batch
+    let finalBatchExpiryDate: Date | null = null;
+    const execution = await tx.execution.findUnique({
+      where: { id: batch.executionId },
+      select: { finalBatchExpiringDate: true },
+    });
+
+    if (execution?.finalBatchExpiringDate) {
+      finalBatchExpiryDate = new Date(execution.finalBatchExpiringDate);
+    }
 
     const finalBatch = await tx.finalBatch.create({
       data: {
         qrId,
         executionBatchId: batch.id,
         recipeId: batch.execution.recipe.id,
+        mixingCompletedAt: completedAt,
+        shift,
+        expiryDate: finalBatchExpiryDate,
       },
     });
 
@@ -547,6 +581,8 @@ export class MixingService {
 
       recipeCode: batch.execution.recipe.recipeCode,
       batchNumber: batch.batchNumber,
+      shift,
+      expiryDate: finalBatchExpiryDate,
     };
   }
 
@@ -564,6 +600,50 @@ export class MixingService {
 
     return {
       success: true,
+    };
+  }
+
+  async setFinalBatchExpiryDate(
+    finalBatchId: number,
+    daysAfterCompletion: number,
+    explicitExpiryDate?: string
+  ) {
+    const finalBatch = await this.prisma.finalBatch.findUnique({
+      where: { id: finalBatchId },
+      include: {
+        executionBatch: {
+          include: {
+            execution: true,
+          },
+        },
+      },
+    });
+
+    if (!finalBatch) {
+      throw new NotFoundException('Final Batch not found.');
+    }
+
+    if (finalBatch.expiryDate) {
+      throw new BadRequestException('Expiry date is already set for this Final Batch.');
+    }
+
+    let expiryDate: Date;
+
+    if (explicitExpiryDate) {
+      expiryDate = new Date(explicitExpiryDate);
+    } else {
+      const baseDate = finalBatch.mixingCompletedAt ?? finalBatch.createdAt;
+      expiryDate = new Date(baseDate.getTime() + daysAfterCompletion * 24 * 60 * 60 * 1000);
+    }
+
+    const updated = await this.prisma.finalBatch.update({
+      where: { id: finalBatchId },
+      data: { expiryDate },
+    });
+
+    return {
+      success: true,
+      expiryDate: updated.expiryDate,
     };
   }
 

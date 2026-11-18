@@ -47,6 +47,9 @@ function draftFromRecipe(recipe: RecipeDetails): RecipeDraft {
     name: recipe.name,
     description: recipe.description ?? '',
     workflow: recipe.workflow as RecipeWorkflow,
+    masterBatchCompoundName: recipe.masterBatchCompoundName ?? '',
+    polymerName: recipe.polymerName ?? '',
+    finalBatchCompoundName: recipe.finalBatchCompoundName ?? '',
     steps: recipe.steps.map((s) => ({
       id: uid(),
       stepType: s.stepType as StepType,
@@ -420,6 +423,9 @@ export default function RecipeEditPage() {
         name: draft.name,
         description: draft.description,
         workflow: draft.workflow,
+        masterBatchCompoundName: draft.masterBatchCompoundName,
+        polymerName: draft.polymerName,
+        finalBatchCompoundName: draft.finalBatchCompoundName,
         steps: draft.steps.map((s) => ({
           stepType: s.stepType,
           batchType: s.batchType,
@@ -493,6 +499,18 @@ export default function RecipeEditPage() {
             <div className="md:col-span-2">
               <Label>Description</Label>
               <Input value={draft.description} disabled className="mt-1" />
+            </div>
+            <div>
+              <Label>Master Batch Compound Name</Label>
+              <Input value={draft.masterBatchCompoundName} disabled className="mt-1" />
+            </div>
+            <div>
+              <Label>Polymer Name</Label>
+              <Input value={draft.polymerName} disabled className="mt-1" />
+            </div>
+            <div>
+              <Label>Final Batch Compound Name</Label>
+              <Input value={draft.finalBatchCompoundName} disabled className="mt-1" />
             </div>
             <div>
               <Label>Workflow (read-only)</Label>

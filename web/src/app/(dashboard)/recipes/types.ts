@@ -30,6 +30,9 @@ export interface RecipeDraft {
   name: string;
   description: string;
   workflow: RecipeWorkflow;
+  masterBatchCompoundName: string;
+  polymerName: string;
+  finalBatchCompoundName: string;
   steps: RecipeStepDraft[];
 }
 
@@ -38,6 +41,9 @@ export interface RecipeCreatePayload {
   name: string;
   description: string;
   workflow: RecipeWorkflow;
+  masterBatchCompoundName: string;
+  polymerName: string;
+  finalBatchCompoundName: string;
   steps: {
     stepType: StepType;
     batchType: BatchType;

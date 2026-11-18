@@ -20,9 +20,13 @@ export function BulkWeighing() {
   const [selectedRecipeId, setSelectedRecipeId] = useState('');
   const [selectedVersionId, setSelectedVersionId] = useState('');
   const [batchCount, setBatchCount] = useState('1');
+  const [productionBatchNumber, setProductionBatchNumber] = useState('');
+  const [masterBatchExpiringDate, setMasterBatchExpiringDate] = useState('');
+  const [finalBatchExpiringDate, setFinalBatchExpiringDate] = useState('');
   const [recipeError, setRecipeError] = useState('');
   const [versionError, setVersionError] = useState('');
   const [batchError, setBatchError] = useState('');
+  const [productionBatchError, setProductionBatchError] = useState('');
   const [selectedExecution, setSelectedExecution] =
     useState<ExecutionItem | null>(null);
   const [qrPreviewOpen, setQrPreviewOpen] = useState(false);
@@ -31,9 +35,13 @@ export function BulkWeighing() {
     setSelectedRecipeId('');
     setSelectedVersionId('');
     setBatchCount('1');
+    setProductionBatchNumber('');
+    setMasterBatchExpiringDate('');
+    setFinalBatchExpiringDate('');
     setRecipeError('');
     setVersionError('');
     setBatchError('');
+    setProductionBatchError('');
   };
 
   const handleSubmit = () => {
@@ -66,6 +74,9 @@ export function BulkWeighing() {
         recipeId: Number(trimmedVersionId),
         totalBatches: parsedBatchCount,
         mode: 'BULK',
+        productionBatchNumber: productionBatchNumber.trim(),
+        masterBatchExpiringDate: masterBatchExpiringDate || undefined,
+        finalBatchExpiringDate: finalBatchExpiringDate || undefined,
       },
       {
         onSuccess: () => {
@@ -137,9 +148,13 @@ export function BulkWeighing() {
         selectedRecipeId={selectedRecipeId}
         selectedVersionId={selectedVersionId}
         batchCount={Number(batchCount)}
+        productionBatchNumber={productionBatchNumber}
+        masterBatchExpiringDate={masterBatchExpiringDate}
+        finalBatchExpiringDate={finalBatchExpiringDate}
         recipeError={recipeError}
         versionError={versionError}
         batchError={batchError}
+        productionBatchError={productionBatchError}
         onRecipeChange={(value) => {
           setSelectedRecipeId(value);
           setSelectedVersionId('');
@@ -159,11 +174,23 @@ export function BulkWeighing() {
             setBatchError('');
           }
         }}
+        onProductionBatchNumberChange={(value) => {
+          setProductionBatchNumber(value);
+          if (productionBatchError) {
+            setProductionBatchError('');
+          }
+        }}
+        onMasterBatchExpiringDateChange={(value) => {
+          setMasterBatchExpiringDate(value);
+        }}
+        onFinalBatchExpiringDateChange={(value) => {
+          setFinalBatchExpiringDate(value);
+        }}
         onSubmit={handleSubmit}
       />
       <ExecutionQrPreviewModal
         open={qrPreviewOpen}
-        executionId={selectedExecution?.id}
+        executionId={selectedExecution ? Number(selectedExecution.id) : 0}
         onClose={() => {
           setQrPreviewOpen(false);
           setSelectedExecution(null);

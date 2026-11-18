@@ -1,4 +1,4 @@
-import { Body, Controller, Post, Get, UseGuards } from '@nestjs/common';
+import { Body, Controller, Post, Get, Param, ParseIntPipe, UseGuards } from '@nestjs/common';
 
 import { UserRole } from '@prisma/client';
 
@@ -31,5 +31,12 @@ export class WeighingController {
   @Roles(UserRole.RUBBER_TECHNOLOGIST, UserRole.OPERATOR)
   findAllExecutions() {
     return this.weighingService.findAllExecutions();
+  }
+
+  @Get('executions/:id/final-batch-qrs')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.RUBBER_TECHNOLOGIST, UserRole.OPERATOR)
+  getFinalBatchQrs(@Param('id', ParseIntPipe) id: number) {
+    return this.weighingService.getFinalBatchQrs(id);
   }
 }

@@ -63,4 +63,16 @@ export class UpdateRecipeDto {
   @ValidateNested({ each: true })
   @Type(() => StepDto)
   steps!: StepDto[];
+
+  @IsOptional()
+  @IsString()
+  masterBatchCompoundName?: string;
+
+  @IsOptional()
+  @IsString()
+  polymerName?: string;
+
+  @IsOptional()
+  @IsString()
+  finalBatchCompoundName?: string;
 }

@@ -43,7 +43,7 @@ export class MixingPrinterService {
   }
 
   async printFinalBatch(
-    data: Omit<MixingLabelData, 'labelType' | 'completedAt'>
+    data: Omit<MixingLabelData, 'labelType' | 'completedAt' | 'productionBatchNumber' | 'compoundName' | 'mixingDate' | 'mixingTime' | 'shift' | 'expiryDate'>
   ): Promise<void> {
     const finalBatch = await this.prisma.finalBatch.findUnique({
       where: {
@@ -51,6 +51,23 @@ export class MixingPrinterService {
       },
       select: {
         createdAt: true,
+        mixingCompletedAt: true,
+        shift: true,
+        expiryDate: true,
+        executionBatch: {
+          select: {
+            execution: {
+              select: {
+                productionBatchNumber: true,
+                recipe: {
+                  select: {
+                    finalBatchCompoundName: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     });
 
@@ -58,14 +75,39 @@ export class MixingPrinterService {
       throw new NotFoundException(`Final Batch not found for QR: ${data.qrId}`);
     }
 
+    const completedAt = finalBatch.mixingCompletedAt ?? finalBatch.createdAt;
+    const mixingDate = completedAt ? formatDate(completedAt) : '';
+    const mixingTime = completedAt ? formatTime(completedAt) : '';
+
     const tspl = buildMixingLabel({
       ...data,
       labelType: 'FINAL',
       completedAt: finalBatch.createdAt,
+      productionBatchNumber: finalBatch.executionBatch?.execution?.productionBatchNumber ?? undefined,
+      compoundName: finalBatch.executionBatch?.execution?.recipe?.finalBatchCompoundName ?? undefined,
+      mixingDate,
+      mixingTime,
+      shift: finalBatch.shift ?? undefined,
+      expiryDate: finalBatch.expiryDate ? formatDate(finalBatch.expiryDate) : undefined,
     });
 
     const printer = PRINTERS.mixing;
 
     await this.tscPrinterClient.send(printer.ip, printer.port, tspl);
   }
+}
+
+function formatDate(value: Date | string): string {
+  const date = new Date(value);
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
+}
+
+function formatTime(value: Date | string): string {
+  const date = new Date(value);
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
 }

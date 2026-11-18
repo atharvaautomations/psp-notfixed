@@ -74,4 +74,13 @@ export class CreateRecipeDto {
 
   @IsString()
   description?: string;
+
+  @IsString()
+  masterBatchCompoundName?: string;
+
+  @IsString()
+  polymerName?: string;
+
+  @IsString()
+  finalBatchCompoundName?: string;
 }

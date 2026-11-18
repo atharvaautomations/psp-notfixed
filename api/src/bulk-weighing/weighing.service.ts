@@ -261,4 +261,35 @@ export class WeighingService {
       createdAt: execution.createdAt,
     }));
   }
+
+  async getFinalBatchQrs(executionId: number) {
+    const finalBatches = await this.prisma.finalBatch.findMany({
+      where: {
+        executionBatch: {
+          executionId,
+        },
+      },
+      include: {
+        executionBatch: true,
+        recipe: true,
+      },
+      orderBy: {
+        executionBatch: {
+          batchNumber: 'asc',
+        },
+      },
+    });
+
+    return finalBatches.map((fb) => ({
+      id: fb.id,
+      qrId: fb.qrId,
+      batchNumber: fb.executionBatch.batchNumber,
+      recipeCode: fb.recipe.recipeCode,
+      recipeName: fb.recipe.name,
+      shift: fb.shift,
+      expiryDate: fb.expiryDate,
+      mixingCompletedAt: fb.mixingCompletedAt,
+      status: fb.status,
+    }));
+  }
 }

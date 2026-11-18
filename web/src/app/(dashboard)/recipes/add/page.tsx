@@ -32,6 +32,9 @@ const emptyDraft: RecipeDraft = {
   name: '',
   description: '',
   workflow: 'KNEADER_AND_MIXING',
+  masterBatchCompoundName: '',
+  polymerName: '',
+  finalBatchCompoundName: '',
   steps: [],
 };
 
@@ -428,6 +431,9 @@ export default function RecipeAddPage() {
       name: draft.name.trim(),
       description: draft.description.trim(),
       workflow: draft.workflow,
+      masterBatchCompoundName: draft.masterBatchCompoundName.trim(),
+      polymerName: draft.polymerName.trim(),
+      finalBatchCompoundName: draft.finalBatchCompoundName.trim(),
 
       steps: draft.steps.map((s) => ({
         stepType: s.stepType,
@@ -528,6 +534,39 @@ export default function RecipeAddPage() {
                 value={draft.description}
                 onChange={(e) =>
                   setDraft({ ...draft, description: e.target.value })
+                }
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label>Master Batch Compound Name</Label>
+              <Input
+                placeholder="e.g., MB-Compound-001"
+                value={draft.masterBatchCompoundName}
+                onChange={(e) =>
+                  setDraft({ ...draft, masterBatchCompoundName: e.target.value })
+                }
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label>Polymer Name</Label>
+              <Input
+                placeholder="e.g., SBR 1502"
+                value={draft.polymerName}
+                onChange={(e) =>
+                  setDraft({ ...draft, polymerName: e.target.value })
+                }
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label>Final Batch Compound Name</Label>
+              <Input
+                placeholder="e.g., FB-Compound-001"
+                value={draft.finalBatchCompoundName}
+                onChange={(e) =>
+                  setDraft({ ...draft, finalBatchCompoundName: e.target.value })
                 }
                 className="mt-1"
               />
@@ -639,6 +678,9 @@ export default function RecipeAddPage() {
               <div className="grid md:grid-cols-2 gap-4">
                 <InfoRow label="Recipe Code" value={draft.recipeCode || '—'} />
                 <InfoRow label="Name" value={draft.name || '—'} />
+                <InfoRow label="Master Batch Compound" value={draft.masterBatchCompoundName || '—'} />
+                <InfoRow label="Polymer Name" value={draft.polymerName || '—'} />
+                <InfoRow label="Final Batch Compound" value={draft.finalBatchCompoundName || '—'} />
                 <div className="md:col-span-2">
                   <InfoRow
                     label="Description"

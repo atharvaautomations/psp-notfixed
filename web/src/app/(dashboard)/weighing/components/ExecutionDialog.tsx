@@ -42,12 +42,19 @@ interface ExecutionDialogProps {
   selectedRecipeId: string;
   selectedVersionId: string;
   batchCount: number;
+  productionBatchNumber: string;
+  masterBatchExpiringDate: string;
+  finalBatchExpiringDate: string;
   recipeError?: string;
   versionError?: string;
   batchError?: string;
+  productionBatchError?: string;
   onRecipeChange: (value: string) => void;
   onVersionChange: (value: string) => void;
   onBatchCountChange: (value: string) => void;
+  onProductionBatchNumberChange: (value: string) => void;
+  onMasterBatchExpiringDateChange: (value: string) => void;
+  onFinalBatchExpiringDateChange: (value: string) => void;
   onSubmit: () => void;
 }
 
@@ -58,12 +65,19 @@ export function ExecutionDialog({
   selectedRecipeId,
   selectedVersionId,
   batchCount,
+  productionBatchNumber,
+  masterBatchExpiringDate,
+  finalBatchExpiringDate,
   recipeError,
   versionError,
   batchError,
+  productionBatchError,
   onRecipeChange,
   onVersionChange,
   onBatchCountChange,
+  onProductionBatchNumberChange,
+  onMasterBatchExpiringDateChange,
+  onFinalBatchExpiringDateChange,
   onSubmit,
 }: ExecutionDialogProps) {
   const [versions, setVersions] = useState<RecipeVersionRow[]>([]);
@@ -230,6 +244,43 @@ export function ExecutionDialog({
               {batchError ? (
                 <p className="text-sm text-red-600">{batchError}</p>
               ) : null}
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">
+                Production Batch Number
+              </label>
+              <Input
+                type="text"
+                value={productionBatchNumber}
+                onChange={(event) => onProductionBatchNumberChange(event.target.value)}
+                placeholder="Enter production batch number"
+              />
+              {productionBatchError ? (
+                <p className="text-sm text-red-600">{productionBatchError}</p>
+              ) : null}
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">
+                Master Batch Expiring Date
+              </label>
+              <Input
+                type="date"
+                value={masterBatchExpiringDate}
+                onChange={(event) => onMasterBatchExpiringDateChange(event.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">
+                Final Batch Expiring Date
+              </label>
+              <Input
+                type="date"
+                value={finalBatchExpiringDate}
+                onChange={(event) => onFinalBatchExpiringDateChange(event.target.value)}
+              />
             </div>
           </div>
 

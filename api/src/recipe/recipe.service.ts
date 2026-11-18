@@ -81,6 +81,9 @@ export class RecipeService {
         description: dto.description,
         workflow: dto.workflow,
         version: 1,
+        masterBatchCompoundName: dto.masterBatchCompoundName,
+        polymerName: dto.polymerName,
+        finalBatchCompoundName: dto.finalBatchCompoundName,
         steps: {
           create: stepsCreateData,
         },
@@ -283,6 +286,9 @@ export class RecipeService {
         workflow: recipe.workflow,
         version: newVersion,
         parentRecipeId: rootId,
+        masterBatchCompoundName: dto.masterBatchCompoundName,
+        polymerName: dto.polymerName,
+        finalBatchCompoundName: dto.finalBatchCompoundName,
         steps: {
           create: stepsCreateData,
         },

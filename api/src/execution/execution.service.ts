@@ -58,6 +58,9 @@ export class ExecutionService {
           mode: dto.mode,
           totalBatches: dto.totalBatches,
           status: ExecutionStatus.PENDING,
+          productionBatchNumber: dto.productionBatchNumber,
+          masterBatchExpiringDate: dto.masterBatchExpiringDate ? new Date(dto.masterBatchExpiringDate) : null,
+          finalBatchExpiringDate: dto.finalBatchExpiringDate ? new Date(dto.finalBatchExpiringDate) : null,
         },
       });
 

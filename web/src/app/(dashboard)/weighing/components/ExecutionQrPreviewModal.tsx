@@ -10,26 +10,42 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { toast } from 'sonner'; // or your toast library
+import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
 
-export default function QrPreviewModal({ open, onClose, executionId }: any) {
+interface FinalBatchQR {
+  id: number;
+  qrId: string;
+  batchNumber: number;
+  recipeCode: string;
+  recipeName: string;
+  shift: string;
+  expiryDate: string | null;
+  mixingCompletedAt: string | null;
+  status: string;
+}
+
+export default function QrPreviewModal({ open, onClose, executionId }: { open: boolean; onClose: (open: boolean) => void; executionId: number }) {
   const [execution, setExecution] = useState<any>(null);
+  const [finalBatches, setFinalBatches] = useState<FinalBatchQR[]>([]);
   const [loading, setLoading] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [printerStatus, setPrinterStatus] = useState<
     'unknown' | 'connected' | 'disconnected'
   >('unknown');
   const [selectedBatch, setSelectedBatch] = useState(0);
+  const [activeTab, setActiveTab] = useState<'ingredients' | 'final-batch'>('ingredients');
 
   useEffect(() => {
     if (open && executionId) {
       setLoading(true);
-      api
-        .get(`/executions/${executionId}/qrs`)
-        .then((res) => {
-          console.log(res.data);
-          setExecution(res.data);
+      Promise.all([
+        api.get(`/executions/${executionId}/qrs`).then(res => res.data),
+        api.get(`/weighing/executions/${executionId}/final-batch-qrs`).then(res => res.data),
+      ])
+        .then(([execData, fbData]) => {
+          setExecution(execData);
+          setFinalBatches(fbData);
         })
         .finally(() => setLoading(false));
     }
@@ -107,9 +123,43 @@ export default function QrPreviewModal({ open, onClose, executionId }: any) {
     }
   };
 
-  /**
-   * Test printer connection
-   */
+  const handlePrintFinalBatch = async (fb: FinalBatchQR) => {
+    try {
+      setPrinting(true);
+      await api.post('/printer/mixing/final-batch', {
+        qrId: fb.qrId,
+        recipeCode: fb.recipeCode,
+        batchNumber: fb.batchNumber,
+      });
+      toast.success(`Final Batch label printed for ${fb.qrId}`);
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || 'Final Batch print failed');
+      console.error('Final Batch print error:', error);
+    } finally {
+      setPrinting(false);
+    }
+  };
+
+  const handlePrintAllFinalBatches = async () => {
+    if (!finalBatches.length) return;
+
+    try {
+      setPrinting(true);
+      for (const fb of finalBatches) {
+        await api.post('/printer/mixing/final-batch', {
+          qrId: fb.qrId,
+          recipeCode: fb.recipeCode,
+          batchNumber: fb.batchNumber,
+        });
+      }
+      toast.success(`All ${finalBatches.length} Final Batch labels printed`);
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || 'Final Batch print failed');
+    } finally {
+      setPrinting(false);
+    }
+  };
+
   const handleTestPrinter = async () => {
     try {
       const response = await api.get('/printer/status');
@@ -210,54 +260,135 @@ export default function QrPreviewModal({ open, onClose, executionId }: any) {
             </div>
           )}
 
-          {execution && (
+          {execution ? (
             <>
-              <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
-                {execution.batches.map((batch: any, index: number) => (
-                  <Button
-                    key={batch.id}
-                    variant={selectedBatch === index ? 'default' : 'outline'}
-                    onClick={() => setSelectedBatch(index)}
-                  >
-                    Batch {batch.batchNumber}
-                  </Button>
-                ))}
+              {/* Tab Navigation */}
+              <div className="flex gap-2 mb-4 border-b pb-2">
+                <Button
+                  variant={activeTab === 'ingredients' ? 'default' : 'outline'}
+                  onClick={() => setActiveTab('ingredients')}
+                  className="text-sm"
+                >
+                  Ingredient Labels
+                </Button>
+                <Button
+                  variant={activeTab === 'final-batch' ? 'default' : 'outline'}
+                  onClick={() => setActiveTab('final-batch')}
+                  className="text-sm"
+                >
+                  Final Batch Labels ({finalBatches.length})
+                </Button>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
-                {currentBatch?.ingredients.map((ingredient: any) => (
-                  <div
-                    key={ingredient.id}
-                    className="border rounded-lg p-4 flex flex-col items-center"
-                  >
-                    <QRCode value={ingredient.qrId} size={110} />
-
-                    <p className="mt-3 text-xs font-mono text-center break-all">
-                      {ingredient.qrId}
-                    </p>
-
-                    <p className="mt-1 text-sm font-medium">
-                      {(ingredient.stepType || 'UNKNOWN').toUpperCase()} |{' '}
-                      {ingredient.ingredientCode}
-                    </p>
-
-                    <p className="text-xs text-gray-500">
-                      {ingredient.quantity} g
-                    </p>
-
-                    <Button
-                      className="mt-3 w-full"
-                      variant="outline"
-                      onClick={() => handlePrintSingle(ingredient.qrId)}
-                      disabled={printing || printerStatus !== 'connected'}
-                    >
-                      Print
-                    </Button>
+              {activeTab === 'ingredients' && (
+                <>
+                  <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+                    {execution.batches.map((batch: any, index: number) => (
+                      <Button
+                        key={batch.id}
+                        variant={selectedBatch === index ? 'default' : 'outline'}
+                        onClick={() => setSelectedBatch(index)}
+                      >
+                        Batch {batch.batchNumber}
+                      </Button>
+                    ))}
                   </div>
-                ))}
-              </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
+                    {currentBatch?.ingredients.map((ingredient: any) => (
+                      <div
+                        key={ingredient.id}
+                        className="border rounded-lg p-4 flex flex-col items-center"
+                      >
+                        <QRCode value={ingredient.qrId} size={110} />
+
+                        <p className="mt-3 text-xs font-mono text-center break-all">
+                          {ingredient.qrId}
+                        </p>
+
+                        <p className="mt-1 text-sm font-medium">
+                          {(ingredient.stepType || 'UNKNOWN').toUpperCase()} |{' '}
+                          {ingredient.ingredientCode}
+                        </p>
+
+                        <p className="text-xs text-gray-500">
+                          {ingredient.quantity} g
+                        </p>
+
+                        <Button
+                          className="mt-3 w-full"
+                          variant="outline"
+                          onClick={() => handlePrintSingle(ingredient.qrId)}
+                          disabled={printing || printerStatus !== 'connected'}
+                        >
+                          Print
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {activeTab === 'final-batch' && (
+                <div>
+                  {finalBatches.length === 0 ? (
+                    <p className="text-center py-6 text-gray-500">No Final Batch QR codes found.</p>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
+                        {finalBatches.map((fb) => (
+                          <div
+                            key={fb.id}
+                            className="border rounded-lg p-4 flex flex-col items-center"
+                          >
+                            <QRCode value={fb.qrId} size={110} />
+
+                            <p className="mt-3 text-xs font-mono text-center break-all">
+                              {fb.qrId}
+                            </p>
+
+                            <p className="mt-1 text-sm font-medium">
+                              Batch {fb.batchNumber} | {fb.recipeCode}
+                            </p>
+
+                            <p className="text-xs text-gray-500">
+                              Shift: {fb.shift}
+                            </p>
+
+                            <p className="text-xs text-gray-500">
+                              Expiry: {fb.expiryDate ? new Date(fb.expiryDate).toLocaleDateString() : 'N/A'}
+                            </p>
+
+                            <p className="text-xs text-gray-500">
+                              Mixing: {fb.mixingCompletedAt ? new Date(fb.mixingCompletedAt).toLocaleString() : 'N/A'}
+                            </p>
+
+                            <Button
+                              className="mt-3 w-full"
+                              variant="outline"
+                              onClick={() => handlePrintFinalBatch(fb)}
+                              disabled={printing || printerStatus !== 'connected'}
+                            >
+                              Print FB Label
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+
+                      <Button
+                        className="mt-4 w-full sm:w-auto"
+                        variant="default"
+                        onClick={handlePrintAllFinalBatches}
+                        disabled={printing || printerStatus !== 'connected' || finalBatches.length === 0}
+                      >
+                        Print All Final Batch Labels
+                      </Button>
+                    </>
+                  )}
+                </div>
+              )}
             </>
-          )}
+          ) : null}
         </div>
 
         <div className="flex justify-center gap-4 mt-6 flex-wrap">
@@ -265,7 +396,7 @@ export default function QrPreviewModal({ open, onClose, executionId }: any) {
             Close
           </Button>
 
-          {currentBatch && (
+          {activeTab === 'ingredients' && currentBatch && (
             <>
               <Button
                 variant="outline"
@@ -299,6 +430,16 @@ export default function QrPreviewModal({ open, onClose, executionId }: any) {
                 Print Mixing ({mixingQrCount})
               </Button>
             </>
+          )}
+
+          {activeTab === 'final-batch' && finalBatches.length > 0 && (
+            <Button
+              variant="default"
+              onClick={handlePrintAllFinalBatches}
+              disabled={printing || printerStatus !== 'connected'}
+            >
+              Print All Final Batch Labels
+            </Button>
           )}
         </div>
       </DialogContent>

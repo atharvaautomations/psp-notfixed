@@ -256,6 +256,10 @@ model Recipe {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  masterBatchCompoundName String?
+  polymerName String?
+  finalBatchCompoundName String?
+
   steps      RecipeStep[]
   executions Execution[]
 
@@ -321,6 +325,10 @@ model Execution {
   totalBatches Int
 
   status ExecutionStatus @default(PENDING)
+
+  productionBatchNumber String?
+  masterBatchExpiringDate DateTime?
+  finalBatchExpiringDate DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -483,6 +491,10 @@ model FinalBatch {
   consumedAt DateTime?
 
   status FinalBatchStatus @default(CREATED)
+
+  mixingCompletedAt DateTime?
+  shift String?
+  expiryDate DateTime?
 
   qcInspections QcInspection[]
 

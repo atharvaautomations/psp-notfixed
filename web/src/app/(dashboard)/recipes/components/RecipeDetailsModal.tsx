@@ -44,6 +44,9 @@ export interface RecipeDetails {
   version: number;
   createdAt: string;
   updatedAt: string;
+  masterBatchCompoundName?: string | null;
+  polymerName?: string | null;
+  finalBatchCompoundName?: string | null;
   steps: RecipeStep[];
 }
 

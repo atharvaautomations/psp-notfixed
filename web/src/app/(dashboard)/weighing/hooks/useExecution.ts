@@ -61,6 +61,9 @@ export function useCreateExecution() {
       recipeId: number;
       totalBatches: number;
       mode: 'BULK';
+      productionBatchNumber?: string;
+      masterBatchExpiringDate?: string;
+      finalBatchExpiringDate?: string;
     }) => {
       return api.post('/executions', payload);
     },

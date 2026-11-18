@@ -151,9 +151,28 @@ export class QcService {
   }
 
   async scanQr(dto: ScanQcDto) {
+    const qrId = dto.qrId;
+
+    // Check QR code type and provide helpful error
+    if (qrId.startsWith('EI-')) {
+      throw new BadRequestException(
+        'Invalid QR code for QC scan. ExecutionIngredient QR codes (EI-...) are for ingredient tracking during weighing/mixing. Please scan the FinalBatch QR code (FB-...) for QC inspection.'
+      );
+    }
+    if (qrId.startsWith('MB-')) {
+      throw new BadRequestException(
+        'Invalid QR code for QC scan. MasterBatch QR codes (MB-...) are for mixing process. Please scan the FinalBatch QR code (FB-...) for QC inspection.'
+      );
+    }
+    if (qrId.startsWith('BW-')) {
+      throw new BadRequestException(
+        'Invalid QR code for QC scan. Weighing QR codes (BW-...) are for inward material. Please scan the FinalBatch QR code (FB-...) for QC inspection.'
+      );
+    }
+
     const finalBatch = await this.prisma.finalBatch.findUnique({
       where: {
-        qrId: dto.qrId,
+        qrId,
       },
       include: {
         recipe: true,
@@ -166,7 +185,9 @@ export class QcService {
     });
 
     if (!finalBatch) {
-      throw new BadRequestException('Final Batch not found.');
+      throw new BadRequestException(
+        'Final Batch not found. Please ensure you are scanning a valid FinalBatch QR code (format: FB-{EXECUTION_CODE}-B{batchNum}).'
+      );
     }
 
     const specification = await this.prisma.qcSpecification.findUnique({

@@ -1,8 +1,9 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Post, Param, ParseIntPipe } from '@nestjs/common';
 import { MixingService } from './mixing.service';
 import { ScanMasterBatchDto } from './dto/scan-master-batch.dto';
 import { ScanIngredientDto } from './dto/scan-ingredient.dto';
 import { CompleteStageDto } from './dto/complete-stage.dto';
+import { SetExpiryDateDto } from './dto/set-expiry-date.dto';
 
 @Controller('mixing')
 export class MixingController {
@@ -26,5 +27,13 @@ export class MixingController {
   @Post('recipe-written')
   recipeWritten(@Body() dto: CompleteStageDto) {
     return this.mixingService.recipeWritten(dto.executionBatchId);
+  }
+
+  @Post('final-batch/:id/set-expiry')
+  setFinalBatchExpiryDate(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: SetExpiryDateDto
+  ) {
+    return this.mixingService.setFinalBatchExpiryDate(id, dto.daysAfterCompletion, dto.explicitExpiryDate);
   }
 }
