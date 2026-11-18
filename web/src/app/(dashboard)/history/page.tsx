@@ -11,7 +11,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { DataTableShell } from '@/components/ui/datatable-shell';
 import { Input } from '@/components/ui/input';
-import { useHistory, useHistoryExport } from '@/hooks/useHistory';
+import { useHistory, useHistoryExport, type HistoryFilters } from '@/hooks/useHistory';
 import { binToDisplay } from '@/utils/bins/bin-mapping';
 import { toast } from '@/components/ui/use-toast';
 import {
@@ -45,9 +45,8 @@ export default function HistoryPage() {
     data: history,
     isLoading,
   } = useHistory();
-  const exportHistory = useHistoryExport();
 
-  const [filters, setFilters] = useState({
+  const [filters, setFilters] = useState<HistoryFilters>({
     moduleType: 'All',
     activityType: '',
     status: 'All',
@@ -60,6 +59,7 @@ export default function HistoryPage() {
   });
 
   const [exportFormat, setExportFormat] = useState<'excel' | 'pdf'>('excel');
+  const exportHistory = useHistoryExport(filters, exportFormat);
 
   const [selectedLog, setSelectedLog] = useState<HistoryEntry | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -79,8 +79,9 @@ export default function HistoryPage() {
     }
 
     if (filters.activityType) {
+      const activityType = filters.activityType.toLowerCase();
       result = result.filter((l) =>
-        l.activityType.toLowerCase().includes(filters.activityType.toLowerCase())
+        l.activityType.toLowerCase().includes(activityType)
       );
     }
 

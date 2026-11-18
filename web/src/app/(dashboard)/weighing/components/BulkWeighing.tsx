@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Calendar } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 
 import { Section } from '@/components/global';
 import { Button } from '@/components/ui/button';
@@ -12,6 +13,7 @@ import { useExecution, useCreateExecution } from '../hooks/useExecution';
 import ExecutionQrPreviewModal from './ExecutionQrPreviewModal';
 
 export function BulkWeighing() {
+  const router = useRouter();
   const { recipes, executions } = useExecution();
   const createExecution = useCreateExecution();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -96,7 +98,14 @@ export function BulkWeighing() {
       title="Bulk Weighing"
       description="Create and manage bulk weighing executions"
     >
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        <Button
+          className="bg-green-600 hover:bg-green-700 text-white"
+          onClick={() => router.push('/schedules')}
+        >
+          <Calendar size={16} />
+          Scheduled Executions
+        </Button>
         <Button
           className="bg-blue-600 hover:bg-blue-700 text-white"
           onClick={() => setDialogOpen(true)}

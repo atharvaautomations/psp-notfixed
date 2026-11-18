@@ -66,7 +66,7 @@ export function useHistory(filters?: HistoryFilters) {
   });
 }
 
-export function useHistoryExport(filters?: HistoryFilters) {
+export function useHistoryExport(filters?: HistoryFilters, format?: 'excel' | 'pdf') {
   return async () => {
     const params = new URLSearchParams();
 
@@ -80,6 +80,7 @@ export function useHistoryExport(filters?: HistoryFilters) {
     if (filters?.fromDate) params.append('fromDate', filters.fromDate);
     if (filters?.toDate) params.append('toDate', filters.toDate);
     if (filters?.sort) params.append('sort', filters.sort);
+    if (format) params.append('format', format);
 
     const res = await api.get(`/activity-log/export?${params.toString()}`, {
       responseType: 'blob',

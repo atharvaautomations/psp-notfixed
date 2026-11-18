@@ -19,6 +19,7 @@ import { SystemConfigModule } from '../system-config/system-config.module';
 import { InventoryModule } from '../inventory/inventory.module';
 import { QrPreviewModule } from '../qr-preview/qr-preview.module';
 import { SystemStatusModule } from '../system-status/system-status.module';
+import { SchedulingModule } from '../scheduling/scheduling.module';
 
 import { ActivityLogModule } from '../activity-log/activity-log.module';
 import { RequisitionModule } from '../requisition/requisition.module';
@@ -49,6 +50,7 @@ import { AlertModule } from '../alerts/alert.module';
     InventoryModule,
     QrPreviewModule,
     SystemStatusModule,
+    SchedulingModule,
   ],
 })
 export class AppModule {}

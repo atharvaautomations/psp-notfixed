@@ -326,6 +326,7 @@ model Execution {
   updatedAt DateTime @updatedAt
 
   batches ExecutionBatch[]
+  schedules ExecutionSchedule[]
 
   @@index([recipeId])
 }
@@ -555,6 +556,9 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  operatorSchedules ExecutionSchedule[] @relation("OperatorSchedules")
+  createdSchedules  ExecutionSchedule[] @relation("CreatedSchedules")
+
   @@index([role])
   @@index([isActive])
 }
@@ -687,6 +691,38 @@ model Requisition {
   @@index([createdAt])
   @@index([sourceInwardId])
   @@index([linkedOutwardId])
+}
+
+enum ScheduleStatus {
+  PENDING
+  SUCCESS
+  EXPIRED
+}
+
+model ExecutionSchedule {
+  id           Int            @id @default(autoincrement())
+  scheduleCode String         @unique
+
+  executionId  Int
+  execution    Execution      @relation(fields: [executionId], references: [id], onDelete: Cascade)
+
+  operatorId   Int
+  operator     User           @relation("OperatorSchedules", fields: [operatorId], references: [id])
+
+  scheduleDate DateTime
+
+  status       ScheduleStatus @default(PENDING)
+
+  createdById  Int
+  createdBy    User           @relation("CreatedSchedules", fields: [createdById], references: [id])
+
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@index([executionId])
+  @@index([operatorId])
+  @@index([scheduleDate])
+  @@index([status])
 }
 
 model Alert {

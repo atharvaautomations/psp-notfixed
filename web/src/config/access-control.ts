@@ -19,7 +19,9 @@ export type ModuleKey =
   | 'qrPreview'
   | 'settings'
   | 'userManagement'
-  | 'systemConfig';
+  | 'systemConfig'
+  | 'operatorSchedules'
+  | 'schedules';
 
 export const ROLE_ACCESS: Record<UserRole, ModuleKey[]> = {
   STORES: [
@@ -54,9 +56,11 @@ export const ROLE_ACCESS: Record<UserRole, ModuleKey[]> = {
     'reports',
     'qrPreview',
     'settings',
+    'operatorSchedules',
+    'schedules',
   ],
 
-  OPERATOR: ['dashboard', 'weighing', 'processTracking'],
+  OPERATOR: ['dashboard', 'weighing', 'processTracking', 'operatorSchedules', 'schedules'],
 
   QUALITY_CONTROL: [
     'dashboard',
@@ -89,6 +93,8 @@ export const ROLE_ACCESS: Record<UserRole, ModuleKey[]> = {
     'settings',
     'userManagement',
     'systemConfig',
+    'operatorSchedules',
+    'schedules',
   ],
 };
 

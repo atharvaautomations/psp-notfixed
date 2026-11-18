@@ -4,7 +4,10 @@ import {
   Query,
   ParseIntPipe,
   UseGuards,
+  Res,
+  HttpCode,
 } from '@nestjs/common';
+import type { Response } from 'express';
 
 import { UserRole } from '@prisma/client';
 
@@ -52,7 +55,9 @@ export class ActivityLogController {
   }
 
   @Get('export')
+  @HttpCode(200)
   async export(
+    @Res({ passthrough: true }) res: Response,
     @Query('moduleType') moduleType?: string,
     @Query('activityType') activityType?: string,
     @Query('userId') userId?: string,
@@ -60,9 +65,10 @@ export class ActivityLogController {
     @Query('search') search?: string,
     @Query('fromDate') fromDate?: string,
     @Query('toDate') toDate?: string,
-    @Query('sort') sort?: 'asc' | 'desc'
+    @Query('sort') sort?: 'asc' | 'desc',
+    @Query('format') format?: 'excel' | 'pdf',
   ) {
-    return this.activityLogService.export({
+    const buffer = await this.activityLogService.export({
       moduleType,
       activityType,
       userId: userId ? Number(userId) : undefined,
@@ -71,6 +77,17 @@ export class ActivityLogController {
       fromDate,
       toDate,
       sort,
+      format: format ?? 'excel',
     });
+
+    const filename = `history-export.${format === 'pdf' ? 'pdf' : 'xlsx'}`;
+    const contentType =
+      format === 'pdf'
+        ? 'application/pdf'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
   }
 }
