@@ -4,7 +4,7 @@ import { CreateQcSpecificationDto } from './dto/create-qc-specification.dto';
 import { UpdateQcSpecificationDto } from './dto/update-qc-specification.dto';
 import { ScanQcDto } from './dto/scan-qc.dto';
 import { CreateQcInspectionDto } from './dto/create-qc-inspection.dto';
-import { QcStatus } from '@prisma/client';
+import { QcStatus, QcParameterResult } from '@prisma/client';
 
 @Injectable()
 export class QcService {
@@ -219,11 +219,12 @@ export class QcService {
     };
   }
 
-  async createInspection(dto: CreateQcInspectionDto) {
+  async createInspection(dto: CreateQcInspectionDto, userId: number) {
     const finalBatch = await this.prisma.finalBatch.findUnique({
       where: {
         id: dto.finalBatchId,
       },
+      include: { recipe: true },
     });
 
     if (!finalBatch) {
@@ -231,58 +232,95 @@ export class QcService {
     }
 
     const specification = await this.prisma.qcSpecification.findUnique({
-      where: {
-        recipeId: finalBatch.recipeId,
-      },
+      where: { recipeId: finalBatch.recipeId },
+      include: { parameters: { orderBy: { displayOrder: 'asc' } } },
     });
 
     if (!specification) {
-      throw new BadRequestException('QC Specification not found.');
+      throw new BadRequestException('QC Specification not found for this recipe.');
     }
 
-    const passed =
-      specification.hardness === dto.hardnessActual &&
-      specification.tensile === dto.tensileActual &&
-      specification.elongation === dto.elongationActual &&
-      specification.specificGravity === dto.specificGravityActual &&
-      specification.compressionSet === dto.compressionSetActual;
+    // Filter enabled parameters
+    const enabledParams = dto.parameters.filter((p) => p.isEnabled !== false);
 
-    const inspection = await this.prisma.qcInspection.create({
-      data: {
-        finalBatchId: dto.finalBatchId,
+    // Validate that at least one parameter is enabled
+    if (enabledParams.length === 0) {
+      throw new BadRequestException(
+        'At least one test parameter must be enabled for inspection.'
+      );
+    }
 
-        qcSpecificationId: specification.id,
+    // Validate each enabled parameter
+    for (const param of enabledParams) {
+      if (param.actualValue === undefined || param.actualValue === null) {
+        throw new BadRequestException(
+          'All enabled parameters must have an actual value.'
+        );
+      }
+      if (!param.result) {
+        throw new BadRequestException(
+          'All enabled parameters must have a result (PASS/FAIL/RETEST).'
+        );
+      }
+      if ((param.result === 'FAIL' || param.result === 'RETEST') && !param.observations) {
+        throw new BadRequestException(
+          'Observations are required for FAIL or RETEST results.'
+        );
+      }
+    }
 
-        hardnessActual: dto.hardnessActual,
-        tensileActual: dto.tensileActual,
-        elongationActual: dto.elongationActual,
-        specificGravityActual: dto.specificGravityActual,
-        compressionSetActual: dto.compressionSetActual,
+    // Calculate overall result
+    const overallResult = this.calculateOverallResult(
+      enabledParams.map((p) => p.result!) as QcParameterResult[]
+    );
 
-        remarks: dto.remarks,
-
-        status: passed ? QcStatus.PASS : QcStatus.FAIL,
-      },
-
-      include: {
-        finalBatch: {
-          include: {
-            recipe: true,
-            executionBatch: {
-              include: {
-                execution: true,
-              },
-            },
+    // Create inspection with parameters in transaction
+    const inspection = await this.prisma.$transaction(async (tx) => {
+      const inspection = await tx.qcInspection.create({
+        data: {
+          finalBatchId: dto.finalBatchId,
+          qcSpecificationId: specification.id,
+          inspectedById: userId,
+          overallResult,
+          remarks: dto.remarks,
+          status: overallResult === 'PASS' ? QcStatus.PASS : QcStatus.FAIL, // legacy status
+          parameters: {
+            create: dto.parameters.map((param) => ({
+              specificationParameterId: param.specificationParameterId,
+              actualValue: param.actualValue,
+              result: param.result,
+              observations: param.observations,
+              isEnabled: param.isEnabled ?? true,
+            })),
           },
         },
-        qcSpecification: true,
-      },
+        include: {
+          finalBatch: { include: { recipe: true, executionBatch: { include: { execution: true } } } },
+          qcSpecification: true,
+          parameters: { include: { specificationParameter: true } },
+        },
+      });
+
+      return inspection;
     });
 
     return {
-      message: `QC ${passed ? 'PASSED' : 'FAILED'} Successfully.`,
+      message: `QC Inspection saved successfully. Overall Result: ${inspection.overallResult}`,
       inspection,
     };
+  }
+
+  private calculateOverallResult(results: QcParameterResult[]): QcStatus {
+    if (results.length === 0) return QcStatus.FAIL;
+
+    // If any FAIL, overall is FAIL
+    if (results.some((r) => r === QcParameterResult.FAIL)) return QcStatus.FAIL;
+
+    // If any RETEST, overall is RETEST
+    if (results.some((r) => r === QcParameterResult.RETEST)) return QcStatus.RETEST;
+
+    // All PASS
+    return QcStatus.PASS;
   }
 
   async findAllInspections() {

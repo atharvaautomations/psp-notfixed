@@ -21,6 +21,7 @@ import { CreateQcInspectionDto } from './dto/create-qc-inspection.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
+import { CurrentUser } from '../auth/current-user.decorator';
 
 @Controller('qc')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -67,7 +68,10 @@ export class QcController {
   }
 
   @Post('inspection')
-  createInspection(@Body() dto: CreateQcInspectionDto) {
-    return this.qcService.createInspection(dto);
+  createInspection(
+    @Body() dto: CreateQcInspectionDto,
+    @CurrentUser() user: any
+  ) {
+    return this.qcService.createInspection(dto, user.id);
   }
 }

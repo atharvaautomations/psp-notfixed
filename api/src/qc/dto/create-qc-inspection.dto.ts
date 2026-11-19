@@ -1,25 +1,42 @@
-import { IsInt, IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsInt, IsOptional, IsNumber, IsEnum, IsString, IsBoolean, ValidateNested, IsArray } from 'class-validator';
+import { Type } from 'class-transformer';
+import { QcParameterResult } from '@prisma/client';
+
+export class QcInspectionParameterInputDto {
+  @IsInt()
+  specificationParameterId!: number;
+
+  @IsOptional()
+  @IsNumber()
+  actualValue?: number;
+
+  @IsOptional()
+  @IsEnum(QcParameterResult)
+  result?: QcParameterResult;
+
+  @IsOptional()
+  @IsString()
+  observations?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  isEnabled?: boolean;
+}
 
 export class CreateQcInspectionDto {
   @IsInt()
   finalBatchId!: number;
 
-  @IsOptional()
-  @IsNumber()
-  hardnessActual?: number;
-  @IsOptional()
-  @IsNumber()
-  tensileActual?: number;
-  @IsOptional()
-  @IsNumber()
-  elongationActual?: number;
-  @IsOptional()
-  @IsNumber()
-  specificGravityActual?: number;
-  @IsOptional()
-  @IsNumber()
-  compressionSetActual?: number;
+  @ValidateNested({ each: true })
+  @Type(() => QcInspectionParameterInputDto)
+  @IsArray()
+  parameters!: QcInspectionParameterInputDto[];
+
   @IsOptional()
   @IsString()
   remarks?: string;
+
+  @IsOptional()
+  @IsInt()
+  inspectedById?: number;
 }
