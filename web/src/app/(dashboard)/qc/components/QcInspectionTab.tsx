@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import React from 'react';
+import { useState, useCallback } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card } from '@/components/global';
 import { Button } from '@/components/ui/button';
@@ -12,41 +13,33 @@ import {
   qcApi,
   type InspectionPayload,
   type ScanQcResponse,
+  type QcInspectionParameterInputDto,
 } from '../services/qc.api';
-import { getInspectionOutcome } from './qc-utils';
+import { QcInspectionTable } from './QcInspectionTable';
 import QcHistoryTable from './QcHistoryTable';
-
-const parameterFields = [
-  { key: 'hardnessActual', label: 'Hardness' },
-  { key: 'tensileActual', label: 'Tensile' },
-  { key: 'elongationActual', label: 'Elongation' },
-  { key: 'specificGravityActual', label: 'Specific Gravity' },
-  { key: 'compressionSetActual', label: 'Compression Set' },
-] as const;
 
 export default function QcInspectionTab() {
   const [qrId, setQrId] = useState('');
   const [batch, setBatch] = useState<ScanQcResponse | null>(null);
-  const [formData, setFormData] = useState<{
-    hardnessActual: string;
-    tensileActual: string;
-    elongationActual: string;
-    specificGravityActual: string;
-    compressionSetActual: string;
-    remarks: string;
-  }>({
-    hardnessActual: '',
-    tensileActual: '',
-    elongationActual: '',
-    specificGravityActual: '',
-    compressionSetActual: '',
-    remarks: '',
-  });
+  const [formParameters, setFormParameters] = useState<QcInspectionParameterInputDto[]>([]);
+  const [remarks, setRemarks] = useState('');
 
   const scanMutation = useMutation({
     mutationFn: async (value: string) => (await qcApi.scanQr(value)).data,
     onSuccess: (data) => {
       setBatch(data);
+      // Initialize form parameters from specification parameters
+      if (data.specification?.parameters) {
+        setFormParameters(
+          data.specification.parameters.map((p) => ({
+            specificationParameterId: p.id,
+            actualValue: undefined,
+            result: undefined,
+            observations: undefined,
+            isEnabled: p.isEnabled ?? true,
+          }))
+        );
+      }
       toast({ title: 'Batch details loaded successfully' });
     },
     onError: (err: { response?: { data?: { message?: string } } }) => {
@@ -77,31 +70,7 @@ export default function QcInspectionTab() {
     },
   });
 
-  const preview = batch
-    ? getInspectionOutcome(batch.specification, {
-        hardness: formData.hardnessActual
-          ? Number(formData.hardnessActual)
-          : undefined,
-        tensile: formData.tensileActual
-          ? Number(formData.tensileActual)
-          : undefined,
-        elongation: formData.elongationActual
-          ? Number(formData.elongationActual)
-          : undefined,
-        specificGravity: formData.specificGravityActual
-          ? Number(formData.specificGravityActual)
-          : undefined,
-        compressionSet: formData.compressionSetActual
-          ? Number(formData.compressionSetActual)
-          : undefined,
-      })
-    : null;
-
-  const handleChange = (key: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [key]: value }));
-  };
-
-  const handleScan = () => {
+  const handleScan = useCallback(() => {
     if (!qrId.trim()) {
       toast({
         title: 'QR ID is required',
@@ -110,11 +79,10 @@ export default function QcInspectionTab() {
       });
       return;
     }
-
     scanMutation.mutate(qrId.trim());
-  };
+  }, [qrId, scanMutation]);
 
-  const handleSubmit = () => {
+  const handleSubmit = useCallback(() => {
     if (!batch) {
       toast({
         title: 'No batch loaded',
@@ -125,28 +93,53 @@ export default function QcInspectionTab() {
       return;
     }
 
+    // Validate that at least one parameter is enabled
+    const enabledParams = formParameters.filter((p) => p.isEnabled !== false);
+    if (enabledParams.length === 0) {
+      toast({
+        title: 'Validation error',
+        description: 'At least one test parameter must be enabled.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Validate each enabled parameter
+    for (const param of enabledParams) {
+      if (param.actualValue === undefined || param.actualValue === null) {
+        toast({
+          title: 'Validation error',
+          description: 'All enabled parameters must have an actual value.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      if (!param.result) {
+        toast({
+          title: 'Validation error',
+          description: 'All enabled parameters must have a result (PASS/FAIL/RETEST).',
+          variant: 'destructive',
+        });
+        return;
+      }
+      if ((param.result === 'FAIL' || param.result === 'RETEST') && !param.observations) {
+        toast({
+          title: 'Validation error',
+          description: 'Observations are required for FAIL or RETEST results.',
+          variant: 'destructive',
+        });
+        return;
+      }
+    }
+
     const payload: InspectionPayload = {
       finalBatchId: batch.finalBatchId,
-      hardnessActual: formData.hardnessActual
-        ? Number(formData.hardnessActual)
-        : undefined,
-      tensileActual: formData.tensileActual
-        ? Number(formData.tensileActual)
-        : undefined,
-      elongationActual: formData.elongationActual
-        ? Number(formData.elongationActual)
-        : undefined,
-      specificGravityActual: formData.specificGravityActual
-        ? Number(formData.specificGravityActual)
-        : undefined,
-      compressionSetActual: formData.compressionSetActual
-        ? Number(formData.compressionSetActual)
-        : undefined,
-      remarks: formData.remarks || undefined,
+      parameters: formParameters,
+      remarks: remarks || undefined,
     };
 
     createInspection.mutate(payload);
-  };
+  }, [batch, formParameters, remarks, createInspection]);
 
   return (
     <div className="space-y-6">
@@ -193,19 +186,25 @@ export default function QcInspectionTab() {
                 Target values from specification
               </h3>
               <div className="mt-3 grid gap-2 text-sm text-gray-700">
-                {parameterFields.map((field) => (
+                {batch.specification?.parameters?.map((param) => (
                   <div
-                    key={field.key}
+                    key={param.id}
                     className="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2"
                   >
-                    <span>{field.label}</span>
+                    <span>{param.name}</span>
                     <span className="font-medium">
-                      {batch.specification[
-                        field.key.replace(
-                          'Actual',
-                          ''
-                        ) as keyof typeof batch.specification
-                      ] ?? '-'}
+                      {param.targetValue !== null && param.targetValue !== undefined ? (
+                        <>
+                          {param.targetValue}
+                          {param.tolerance && (
+                            <span className="text-gray-500 ml-1">
+                              ±{param.tolerance}{param.toleranceType === 'PERCENTAGE' ? '%' : ''}
+                            </span>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
                     </span>
                   </div>
                 ))}
@@ -213,96 +212,52 @@ export default function QcInspectionTab() {
             </div>
           </div>
         )}
+
       </Card>
 
-      {batch && !Array.isArray(batch) && (
+        {batch && !Array.isArray(batch) && (
+          <QcInspectionTable
+            specificationParameters={batch.specification?.parameters || []}
+            initialParameters={formParameters}
+            onParametersChange={setFormParameters}
+            existingFiles={{}}
+            isLoading={false}
+            isSubmitting={false}
+          />
+        )}
+
         <Card className="border border-gray-200 p-6">
           <div className="mb-4">
-            <h3 className="text-lg font-semibold text-gray-900">
-              Enter actual test values
-            </h3>
-            <p className="text-sm text-gray-600">
-              The values will be compared with the specification and marked as
-              PASS or FAIL.
-            </p>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            {parameterFields.map((field) => (
-              <div key={field.key}>
-                <Label className="text-gray-900">{field.label}</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={formData[field.key]}
-                  onChange={(event) =>
-                    handleChange(field.key, event.target.value)
-                  }
-                  className="mt-2 bg-white border-gray-200"
-                  placeholder="Enter actual value"
-                />
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-4">
             <Label className="text-gray-900">Remarks</Label>
             <Textarea
-              value={formData.remarks}
-              onChange={(event) => handleChange('remarks', event.target.value)}
+              value={remarks}
+              onChange={(event) => setRemarks(event.target.value)}
               className="mt-2 bg-white border-gray-200"
               placeholder="Add any notes about the inspection"
             />
           </div>
-
-          {preview && (
-            <div
-              className={`mt-6 rounded-xl border px-4 py-3 ${
-                preview.passed
-                  ? 'border-green-200 bg-green-50'
-                  : 'border-red-200 bg-red-50'
-              }`}
-            >
-              <p className="text-sm font-semibold">
-                Result:{' '}
-                <span
-                  className={preview.passed ? 'text-green-700' : 'text-red-700'}
-                >
-                  {preview.status}
-                </span>
-              </p>
-              <p className="mt-1 text-sm text-gray-600">
-                {preview.passed
-                  ? 'The actual values match the configured target values.'
-                  : 'One or more actual values differ from the configured target values.'}
-              </p>
-            </div>
-          )}
 
           <div className="mt-6 flex justify-end">
             <Button
               onClick={handleSubmit}
               disabled={createInspection.isPending}
             >
-              {createInspection.isPending
-                ? 'Saving inspection...'
-                : 'Save Inspection'}
+              {createInspection.isPending ? 'Saving inspection...' : 'Save Inspection'}
             </Button>
           </div>
         </Card>
-      )}
 
-      <div>
-        <div className="mb-4">
-          <h3 className="text-lg font-semibold text-gray-900">
-            QC Inspection History
-          </h3>
-          <p className="text-sm text-gray-600">
-            View past inspections and print QR labels for inspected batches.
-          </p>
+        <div>
+          <div className="mb-4">
+            <h3 className="text-lg font-semibold text-gray-900">
+              QC Inspection History
+            </h3>
+            <p className="text-sm text-gray-600">
+              View past inspections and print QR labels for inspected batches.
+            </p>
+          </div>
+          <QcHistoryTable />
         </div>
-        <QcHistoryTable />
       </div>
-    </div>
-  );
-}
+    );
+  }

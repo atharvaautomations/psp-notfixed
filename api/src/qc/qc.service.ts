@@ -194,6 +194,11 @@ export class QcService {
       where: {
         recipeId: finalBatch.recipeId,
       },
+      include: {
+        parameters: {
+          orderBy: { displayOrder: 'asc' },
+        },
+      },
     });
 
     if (!specification) {
