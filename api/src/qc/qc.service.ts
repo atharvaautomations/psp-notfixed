@@ -190,7 +190,7 @@ export class QcService {
       );
     }
 
-    const specification = await this.prisma.qcSpecification.findUnique({
+    let specification = await this.prisma.qcSpecification.findUnique({
       where: {
         recipeId: finalBatch.recipeId,
       },
@@ -207,14 +207,50 @@ export class QcService {
       );
     }
 
+    // If parameters array is empty, auto-seed default parameters from specification values
+    if (specification.parameters.length === 0) {
+      const defaultParams = [
+        { name: 'Hardness', unit: 'Shore A', targetValue: specification.hardness ?? 60, displayOrder: 1, isDependentOnElongation: false },
+        { name: 'Tensile', unit: 'MPa', targetValue: specification.tensile ?? 15, displayOrder: 2, isDependentOnElongation: false },
+        { name: 'Elongation', unit: '%', targetValue: specification.elongation ?? 300, displayOrder: 3, isDependentOnElongation: false },
+        { name: 'Rheometer ML', unit: 'dN·m', testMethod: 'ASTM D5289', targetValue: 2.7, tolerance: 0.75, toleranceType: 'ABSOLUTE', displayOrder: 4, isDependentOnElongation: true },
+        { name: 'Rheometer MH', unit: 'dN·m', testMethod: 'ASTM D5289', targetValue: 17.5, tolerance: 2.5, toleranceType: 'ABSOLUTE', displayOrder: 5, isDependentOnElongation: true },
+        { name: 'Scorch Time TS2', unit: 'min', testMethod: 'ASTM D5289', targetValue: 1.5, tolerance: 0.3, toleranceType: 'ABSOLUTE', displayOrder: 6, isDependentOnElongation: true },
+        { name: 'Cure Time TC90', unit: 'min', testMethod: 'ASTM D5289', targetValue: 5.0, tolerance: 1.0, toleranceType: 'ABSOLUTE', displayOrder: 7, isDependentOnElongation: true },
+        { name: 'Specific Gravity', unit: 'g/cm³', targetValue: specification.specificGravity ?? 1.2, displayOrder: 8, isDependentOnElongation: false },
+        { name: 'Compression Set', unit: '%', targetValue: specification.compressionSet ?? 25, displayOrder: 9, isDependentOnElongation: false },
+      ];
+
+      for (const p of defaultParams) {
+        await this.prisma.qcSpecificationParameter.create({
+          data: {
+            specificationId: specification.id,
+            name: p.name,
+            unit: p.unit,
+            testMethod: p.testMethod,
+            targetValue: p.targetValue,
+            tolerance: p.tolerance,
+            toleranceType: p.toleranceType,
+            displayOrder: p.displayOrder,
+            isEnabled: true,
+            isDependentOnElongation: p.isDependentOnElongation,
+          },
+        });
+      }
+
+      specification = await this.prisma.qcSpecification.findUnique({
+        where: { id: specification.id },
+        include: {
+          parameters: { orderBy: { displayOrder: 'asc' } },
+        },
+      }) as typeof specification;
+    }
+
     return {
       finalBatchId: finalBatch.id,
       qrId: finalBatch.qrId,
-
       recipe: finalBatch.recipe,
-
       batch: finalBatch.executionBatch,
-
       specification,
     };
   }
@@ -252,44 +288,105 @@ export class QcService {
 
     // Validate each enabled parameter
     for (const param of enabledParams) {
-      if (param.actualValue === undefined || param.actualValue === null) {
+      if (param.actualValue === undefined || param.actualValue === null || isNaN(param.actualValue)) {
         throw new BadRequestException(
-          'All enabled parameters must have an actual value.'
+          'All enabled parameters must have a valid actual value.'
         );
       }
       if (!param.result) {
         throw new BadRequestException(
-          'All enabled parameters must have a result (PASS/FAIL/RETEST).'
-        );
-      }
-      if ((param.result === 'FAIL' || param.result === 'RETEST') && !param.observations) {
-        throw new BadRequestException(
-          'Observations are required for FAIL or RETEST results.'
+          'All enabled parameters must have a result (PASS or FAIL).'
         );
       }
     }
 
-    // Calculate overall result
+    // Calculate overall result: if ANY enabled parameter is FAIL -> FAIL; else PASS
     const overallResult = this.calculateOverallResult(
       enabledParams.map((p) => p.result!) as QcParameterResult[]
     );
 
-    // Create inspection with parameters in transaction
+    // Check if this is a RETEST of an existing inspection
+    if (dto.inspectionId) {
+      const existingInspection = await this.prisma.qcInspection.findUnique({
+        where: { id: dto.inspectionId },
+        include: { parameters: true },
+      });
+
+      if (!existingInspection) {
+        throw new BadRequestException('Original inspection for retest not found.');
+      }
+
+      if (existingInspection.finalBatchId !== dto.finalBatchId) {
+        throw new BadRequestException('Inspection ID does not match the provided final batch ID.');
+      }
+
+      if (existingInspection.remarks?.includes('[RETESTED]')) {
+        throw new BadRequestException(
+          'This QC inspection has already been retested once. Only one retest is allowed. The inspection remains in its final status.'
+        );
+      }
+
+      // Update the existing inspection with retest results
+      const updatedRemarks = dto.remarks
+        ? `${dto.remarks.replace(/\[RETESTED\]/g, '').trim()} [RETESTED]`
+        : '[RETESTED]';
+
+      const updatedInspection = await this.prisma.$transaction(async (tx) => {
+        // Delete old parameters for this inspection
+        await tx.qcInspectionParameter.deleteMany({
+          where: { inspectionId: existingInspection.id },
+        });
+
+        // Update inspection and create new parameters
+        return tx.qcInspection.update({
+          where: { id: existingInspection.id },
+          data: {
+            overallResult,
+            status: overallResult === 'PASS' ? QcStatus.PASS : QcStatus.FAIL,
+            remarks: updatedRemarks,
+            testedAt: new Date(),
+            inspectedById: userId,
+            parameters: {
+              create: dto.parameters.map((param) => ({
+                specificationParameterId: param.specificationParameterId,
+                actualValue: param.actualValue,
+                result: param.result,
+                observations: param.observations || '',
+                isEnabled: param.isEnabled ?? true,
+              })),
+            },
+          },
+          include: {
+            finalBatch: { include: { recipe: true, executionBatch: { include: { execution: true } } } },
+            qcSpecification: true,
+            parameters: { include: { specificationParameter: true } },
+            files: true,
+          },
+        });
+      });
+
+      return {
+        message: `QC Retest saved successfully. Overall Result: ${updatedInspection.overallResult}`,
+        inspection: updatedInspection,
+      };
+    }
+
+    // Create fresh inspection with parameters in transaction
     const inspection = await this.prisma.$transaction(async (tx) => {
-      const inspection = await tx.qcInspection.create({
+      const created = await tx.qcInspection.create({
         data: {
           finalBatchId: dto.finalBatchId,
           qcSpecificationId: specification.id,
           inspectedById: userId,
           overallResult,
-          remarks: dto.remarks,
-          status: overallResult === 'PASS' ? QcStatus.PASS : QcStatus.FAIL, // legacy status
+          remarks: dto.remarks || '',
+          status: overallResult === 'PASS' ? QcStatus.PASS : QcStatus.FAIL,
           parameters: {
             create: dto.parameters.map((param) => ({
               specificationParameterId: param.specificationParameterId,
               actualValue: param.actualValue,
               result: param.result,
-              observations: param.observations,
+              observations: param.observations || '',
               isEnabled: param.isEnabled ?? true,
             })),
           },
@@ -298,10 +395,11 @@ export class QcService {
           finalBatch: { include: { recipe: true, executionBatch: { include: { execution: true } } } },
           qcSpecification: true,
           parameters: { include: { specificationParameter: true } },
+          files: true,
         },
       });
 
-      return inspection;
+      return created;
     });
 
     return {
@@ -336,6 +434,12 @@ export class QcService {
             },
           },
         },
+        parameters: {
+          include: {
+            specificationParameter: true,
+          },
+        },
+        files: true,
       },
       orderBy: {
         testedAt: 'desc',

@@ -75,6 +75,7 @@ export interface InspectionPayload {
   parameters: QcInspectionParameterInputDto[];
   remarks?: string;
   inspectedById?: number;
+  inspectionId?: number;
 }
 
 export type QcParameterResult = 'PASS' | 'FAIL' | 'RETEST';
@@ -110,10 +111,16 @@ export interface QcInspectionHistoryItem {
   id: number;
   status: 'PASS' | 'FAIL' | 'RETEST';
   overallResult?: 'PASS' | 'FAIL' | 'RETEST';
+  remarks?: string;
+  testedAt?: string;
+  parameters?: QcInspectionParameter[];
+  files?: QcInspectionFile[];
   finalBatch: {
+    id?: number;
     qrId: string;
     recipe: {
       recipeCode: string;
+      name?: string;
     };
     executionBatch: {
       batchNumber: number;
@@ -131,8 +138,8 @@ export interface QcInspectionHistoryItem {
       id: number;
       name: string;
     };
-    testedAt: string;
-    createdAt: string;
+    testedAt?: string;
+    createdAt?: string;
   };
 }
 

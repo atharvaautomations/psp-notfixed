@@ -39,4 +39,8 @@ export class CreateQcInspectionDto {
   @IsOptional()
   @IsInt()
   inspectedById?: number;
+
+  @IsOptional()
+  @IsInt()
+  inspectionId?: number;
 }

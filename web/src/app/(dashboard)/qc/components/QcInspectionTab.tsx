@@ -1,19 +1,19 @@
 'use client';
 
-import React from 'react';
-import { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { QrCode, Search, CheckCircle2, History, X } from 'lucide-react';
 import { Card } from '@/components/global';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/components/ui/use-toast';
 import {
   qcApi,
   type InspectionPayload,
   type ScanQcResponse,
   type QcInspectionParameterInputDto,
+  type QcInspectionHistoryItem,
 } from '../services/qc.api';
 import { QcInspectionTable } from './QcInspectionTable';
 import QcHistoryTable from './QcHistoryTable';
@@ -23,20 +23,25 @@ export default function QcInspectionTab() {
   const [batch, setBatch] = useState<ScanQcResponse | null>(null);
   const [formParameters, setFormParameters] = useState<QcInspectionParameterInputDto[]>([]);
   const [remarks, setRemarks] = useState('');
+  const [retestInspectionId, setRetestInspectionId] = useState<number | null>(null);
+  const retestInspectionIdRef = useRef<number | null>(null);
+
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const queryClient = useQueryClient();
 
   const scanMutation = useMutation({
     mutationFn: async (value: string) => (await qcApi.scanQr(value)).data,
     onSuccess: (data) => {
       setBatch(data);
-      // Initialize form parameters from specification parameters
-      if (data.specification?.parameters) {
+      // If we are not in retest mode with existing formParameters, initialize
+      if (!retestInspectionIdRef.current && data.specification?.parameters) {
         setFormParameters(
           data.specification.parameters.map((p) => ({
             specificationParameterId: p.id,
             actualValue: undefined,
             result: undefined,
             observations: undefined,
-            isEnabled: p.isEnabled ?? true,
+            isEnabled: false, // initially unchecked per specification
           }))
         );
       }
@@ -52,14 +57,14 @@ export default function QcInspectionTab() {
     },
   });
 
-  const queryClient = useQueryClient();
-
   const createInspection = useMutation({
     mutationFn: async (payload: InspectionPayload) =>
       (await qcApi.createInspection(payload)).data,
     onSuccess: (res: { message?: string }) => {
       toast({ title: res.message || 'Inspection saved successfully' });
       queryClient.invalidateQueries({ queryKey: ['qc-inspections'] });
+      // Reset active form
+      handleResetForm();
     },
     onError: (err: { response?: { data?: { message?: string } } }) => {
       toast({
@@ -79,185 +84,266 @@ export default function QcInspectionTab() {
       });
       return;
     }
+    setRetestInspectionId(null);
+    retestInspectionIdRef.current = null;
     scanMutation.mutate(qrId.trim());
   }, [qrId, scanMutation]);
 
-  const handleSubmit = useCallback(() => {
-    if (!batch) {
-      toast({
-        title: 'No batch loaded',
-        description:
-          'Scan the batch QR ID first to load the recipe and specification.',
-        variant: 'destructive',
+  // Handle Save Inspection from the Table
+  const handleSaveInspection = useCallback(
+    async (
+      parameters: QcInspectionParameterInputDto[],
+      filesMap: Record<number, File>,
+      overallRemarks?: string
+    ) => {
+      if (!batch) {
+        toast({
+          title: 'No batch loaded',
+          description: 'Scan the batch QR ID first to load the recipe details.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Optional file uploads
+      const fileUploadPromises = Object.entries(filesMap).map(
+        async ([paramIdStr, file]) => {
+          const paramId = Number(paramIdStr);
+          try {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('parameterId', String(paramId));
+            if (batch.finalBatchId) {
+              formData.append('finalBatchId', String(batch.finalBatchId));
+            }
+            await qcApi.uploadFile(formData);
+          } catch (uploadErr) {
+            console.warn(`Optional file upload for parameter ${paramId} skipped:`, uploadErr);
+          }
+        }
+      );
+
+      // Execute any file uploads
+      if (fileUploadPromises.length > 0) {
+        await Promise.allSettled(fileUploadPromises);
+      }
+
+      const payload: InspectionPayload = {
+        finalBatchId: batch.finalBatchId,
+        parameters,
+        remarks: overallRemarks || undefined,
+        inspectionId: retestInspectionId || undefined,
+      };
+
+      createInspection.mutate(payload);
+    },
+    [batch, retestInspectionId, createInspection]
+  );
+
+  // Handle Retest Action from History Table
+  const handleRetest = useCallback(
+    async (item: QcInspectionHistoryItem) => {
+      const batchQr = item.finalBatch?.qrId;
+      if (!batchQr) {
+        toast({
+          title: 'Error',
+          description: 'Final batch QR ID missing from inspection record.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      setQrId(batchQr);
+      setRetestInspectionId(item.id);
+      retestInspectionIdRef.current = item.id;
+      setRemarks(item.remarks?.replace(/\[RETESTED\]/g, '').trim() || '');
+
+      // Pre-fill form parameters from item.parameters if available
+      if (item.parameters && item.parameters.length > 0) {
+        setFormParameters(
+          item.parameters.map((p) => ({
+            specificationParameterId: p.specificationParameterId,
+            actualValue: p.actualValue !== null && p.actualValue !== undefined ? Number(p.actualValue) : undefined,
+            result: p.result as 'PASS' | 'FAIL' | undefined,
+            observations: p.observations || '',
+            isEnabled: p.isEnabled ?? true,
+          }))
+        );
+      }
+
+      // Trigger scan to load batch details and specification
+      scanMutation.mutate(batchQr, {
+        onSuccess: (data) => {
+          // If item parameters weren't available, build from specification
+          if (!item.parameters || item.parameters.length === 0) {
+            if (data.specification?.parameters) {
+              setFormParameters(
+                data.specification.parameters.map((p) => ({
+                  specificationParameterId: p.id,
+                  actualValue: undefined,
+                  result: undefined,
+                  observations: undefined,
+                  isEnabled: true,
+                }))
+              );
+            }
+          }
+          toast({
+            title: 'Retest Mode Loaded',
+            description: `Editing QC Inspection #${item.id} for batch ${batchQr}.`,
+          });
+
+          // Scroll up to the inspection section
+          setTimeout(() => {
+            tableContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 100);
+        },
       });
-      return;
-    }
+    },
+    [scanMutation]
+  );
 
-    // Validate that at least one parameter is enabled
-    const enabledParams = formParameters.filter((p) => p.isEnabled !== false);
-    if (enabledParams.length === 0) {
-      toast({
-        title: 'Validation error',
-        description: 'At least one test parameter must be enabled.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    // Validate each enabled parameter
-    for (const param of enabledParams) {
-      if (param.actualValue === undefined || param.actualValue === null) {
-        toast({
-          title: 'Validation error',
-          description: 'All enabled parameters must have an actual value.',
-          variant: 'destructive',
-        });
-        return;
-      }
-      if (!param.result) {
-        toast({
-          title: 'Validation error',
-          description: 'All enabled parameters must have a result (PASS/FAIL/RETEST).',
-          variant: 'destructive',
-        });
-        return;
-      }
-      if ((param.result === 'FAIL' || param.result === 'RETEST') && !param.observations) {
-        toast({
-          title: 'Validation error',
-          description: 'Observations are required for FAIL or RETEST results.',
-          variant: 'destructive',
-        });
-        return;
-      }
-    }
-
-    const payload: InspectionPayload = {
-      finalBatchId: batch.finalBatchId,
-      parameters: formParameters,
-      remarks: remarks || undefined,
-    };
-
-    createInspection.mutate(payload);
-  }, [batch, formParameters, remarks, createInspection]);
+  // Clear / Reset form
+  const handleResetForm = () => {
+    setBatch(null);
+    setQrId('');
+    setFormParameters([]);
+    setRemarks('');
+    setRetestInspectionId(null);
+    retestInspectionIdRef.current = null;
+  };
 
   return (
-    <div className="space-y-6">
-      <Card className="border border-gray-200 p-6">
+    <div className="space-y-6" ref={tableContainerRef}>
+      {/* 1. Final Batch QR Scan Card */}
+      <Card className="border border-gray-200 p-6 bg-white shadow-sm">
         <div className="flex flex-col gap-4 md:flex-row md:items-end">
           <div className="flex-1">
-            <Label className="text-gray-900">Final batch QR ID</Label>
-            <Input
-              value={qrId}
-              onChange={(event) => setQrId(event.target.value)}
-              placeholder="Enter QR ID"
-              className="mt-2 bg-white border-gray-200"
-            />
+            <Label className="text-gray-900 font-medium">Final batch QR ID</Label>
+            <div className="relative mt-2">
+              <Input
+                value={qrId}
+                onChange={(event) => setQrId(event.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleScan();
+                  }
+                }}
+                placeholder="Enter or scan Final Batch QR ID (e.g. FB-EXE-SR001-302030-B1)"
+                className="bg-white border-gray-200 pr-10 text-sm"
+              />
+              <QrCode className="absolute right-3 top-2.5 h-4 w-4 text-gray-400 pointer-events-none" />
+            </div>
           </div>
-          <Button onClick={handleScan} disabled={scanMutation.isPending}>
-            {scanMutation.isPending ? 'Scanning...' : 'Scan Batch'}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={handleScan}
+              disabled={scanMutation.isPending}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-medium gap-1.5 shadow-sm"
+            >
+              <Search className="h-4 w-4" />
+              <span>{scanMutation.isPending ? 'Scanning...' : 'Scan Batch'}</span>
+            </Button>
+            {batch && (
+              <Button
+                variant="outline"
+                onClick={handleResetForm}
+                className="border-gray-200 text-gray-600 hover:bg-gray-100 gap-1"
+                title="Clear scanned batch"
+              >
+                <X className="h-4 w-4" />
+                <span>Clear</span>
+              </Button>
+            )}
+          </div>
         </div>
 
+        {/* 2. Scanned Batch Details Card (Target values section completely removed per instructions) */}
         {batch && !Array.isArray(batch) && (
-          <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_0.9fr]">
-            <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-              <h3 className="font-semibold text-gray-900">
-                Scanned batch details
-              </h3>
-              <div className="mt-3 space-y-2 text-sm text-gray-700">
-                <p>
-                  <span className="font-medium">QR ID:</span> {batch.qrId}
-                </p>
-                <p>
-                  <span className="font-medium">Recipe:</span>{' '}
-                  {batch.recipe?.recipeCode || 'N/A'} -{' '}
-                  {batch.recipe?.name || 'N/A'}
-                </p>
-                <p>
-                  <span className="font-medium">Batch:</span>{' '}
-                  {batch.batch?.batchNumber || 'N/A'}
-                </p>
+          <div className="mt-6 rounded-xl border border-blue-100 bg-blue-50/40 p-5">
+            <div className="flex items-center justify-between pb-3 border-b border-blue-100/60 mb-4">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-5 w-5 text-blue-600" />
+                <h3 className="font-semibold text-gray-900 text-sm sm:text-base">
+                  Scanned Batch Details
+                </h3>
               </div>
+              {retestInspectionId && (
+                <span className="rounded-full bg-amber-100 px-3 py-0.5 text-xs font-semibold text-amber-800 border border-amber-200">
+                  Retest Mode (Inspection #{retestInspectionId})
+                </span>
+              )}
             </div>
 
-            <div className="rounded-xl border border-gray-200 bg-white p-4">
-              <h3 className="font-semibold text-gray-900">
-                Target values from specification
-              </h3>
-              <div className="mt-3 grid gap-2 text-sm text-gray-700">
-                {batch.specification?.parameters?.map((param) => (
-                  <div
-                    key={param.id}
-                    className="flex items-center justify-between rounded-md bg-gray-50 px-3 py-2"
-                  >
-                    <span>{param.name}</span>
-                    <span className="font-medium">
-                      {param.targetValue !== null && param.targetValue !== undefined ? (
-                        <>
-                          {param.targetValue}
-                          {param.tolerance && (
-                            <span className="text-gray-500 ml-1">
-                              ±{param.tolerance}{param.toleranceType === 'PERCENTAGE' ? '%' : ''}
-                            </span>
-                          )}
-                        </>
-                      ) : (
-                        <span className="text-gray-400">—</span>
-                      )}
-                    </span>
-                  </div>
-                ))}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+              <div className="rounded-lg bg-white p-3 border border-blue-100/80 shadow-xs">
+                <span className="text-xs font-medium text-gray-500 block">QR ID</span>
+                <span className="font-mono font-semibold text-gray-900 mt-0.5 block truncate" title={batch.qrId}>
+                  {batch.qrId}
+                </span>
+              </div>
+
+              <div className="rounded-lg bg-white p-3 border border-blue-100/80 shadow-xs">
+                <span className="text-xs font-medium text-gray-500 block">Recipe</span>
+                <span className="font-semibold text-gray-900 mt-0.5 block truncate" title={`${batch.recipe?.recipeCode || ''} - ${batch.recipe?.name || ''}`}>
+                  {batch.recipe?.recipeCode || 'N/A'} - {batch.recipe?.name || 'N/A'}
+                </span>
+              </div>
+
+              <div className="rounded-lg bg-white p-3 border border-blue-100/80 shadow-xs">
+                <span className="text-xs font-medium text-gray-500 block">Batch Number</span>
+                <span className="font-semibold text-gray-900 mt-0.5 block">
+                  Batch #{batch.batch?.batchNumber || 'N/A'}
+                </span>
+              </div>
+
+              <div className="rounded-lg bg-white p-3 border border-blue-100/80 shadow-xs">
+                <span className="text-xs font-medium text-gray-500 block">Execution Code</span>
+                <span className="font-semibold text-gray-900 mt-0.5 block truncate">
+                  {(batch.batch as any)?.execution?.executionCode || 'N/A'}
+                </span>
               </div>
             </div>
           </div>
         )}
-
       </Card>
 
-        {batch && !Array.isArray(batch) && (
+      {/* 3. The 6-Column QC Inspection Table (Appears when batch is scanned) */}
+      {batch && !Array.isArray(batch) && (
+        <Card className="border border-gray-200 p-6 bg-white shadow-sm">
           <QcInspectionTable
             specificationParameters={batch.specification?.parameters || []}
             initialParameters={formParameters}
-            onParametersChange={setFormParameters}
-            existingFiles={{}}
-            isLoading={false}
-            isSubmitting={false}
+            initialRemarks={remarks}
+            isRetest={Boolean(retestInspectionId)}
+            retestInspectionId={retestInspectionId}
+            isSubmitting={createInspection.isPending}
+            onSave={handleSaveInspection}
+            onReset={() => {
+              setFormParameters([]);
+              setRemarks('');
+            }}
           />
-        )}
-
-        <Card className="border border-gray-200 p-6">
-          <div className="mb-4">
-            <Label className="text-gray-900">Remarks</Label>
-            <Textarea
-              value={remarks}
-              onChange={(event) => setRemarks(event.target.value)}
-              className="mt-2 bg-white border-gray-200"
-              placeholder="Add any notes about the inspection"
-            />
-          </div>
-
-          <div className="mt-6 flex justify-end">
-            <Button
-              onClick={handleSubmit}
-              disabled={createInspection.isPending}
-            >
-              {createInspection.isPending ? 'Saving inspection...' : 'Save Inspection'}
-            </Button>
-          </div>
         </Card>
+      )}
 
-        <div>
-          <div className="mb-4">
-            <h3 className="text-lg font-semibold text-gray-900">
-              QC Inspection History
-            </h3>
-            <p className="text-sm text-gray-600">
-              View past inspections and print QR labels for inspected batches.
+      {/* 4. QC Inspection History Section */}
+      <Card className="border border-gray-200 p-6 bg-white shadow-sm">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <History className="h-5 w-5 text-gray-600" />
+              <h3 className="text-lg font-semibold text-gray-900">
+                QC Inspection History
+              </h3>
+            </div>
+            <p className="text-sm text-gray-500 mt-0.5">
+              View past inspections, print QR labels, or perform one-time retests on failed batches.
             </p>
           </div>
-          <QcHistoryTable />
         </div>
-      </div>
-    );
-  }
+        <QcHistoryTable onRetest={handleRetest} />
+      </Card>
+    </div>
+  );
+}

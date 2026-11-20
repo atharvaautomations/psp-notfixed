@@ -1,456 +1,690 @@
 'use client';
 
-import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { AlertCircle, AlertTriangle } from 'lucide-react';
-
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  Upload,
+  FileText,
+  X,
+  RotateCcw,
+  AlertCircle,
+  FileCheck,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from '@/components/ui/table';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from '@/components/ui/use-toast';
 
 import type {
   QcSpecificationParameter,
   QcInspectionParameterInputDto,
-  QcParameterResult,
-  QcInspectionFile,
 } from '../services/qc.api';
+
+export interface RowData {
+  specificationParameterId: number;
+  name: string;
+  unit?: string;
+  testMethod?: string;
+  targetValue?: number;
+  tolerance?: number;
+  toleranceType?: string;
+  isEnabled: boolean;
+  isDependent: boolean;
+  actualValue: string; // string for input control
+  status: 'PASS' | 'FAIL' | ''; // '' means "Select Status"
+  remarks: string;
+  file?: File | null;
+  existingFileName?: string;
+}
 
 interface QcInspectionTableProps {
   specificationParameters: QcSpecificationParameter[];
   initialParameters?: QcInspectionParameterInputDto[];
-  onParametersChange: (parameters: QcInspectionParameterInputDto[]) => void;
-  onFileUpload?: (parameterId: number, file: File) => Promise<void>;
-  onFileDelete?: (fileId: number) => Promise<void>;
-  existingFiles?: Record<number, QcInspectionFile[]>;
-  isLoading?: boolean;
+  initialRemarks?: string;
+  isRetest?: boolean;
+  retestInspectionId?: number | null;
   isSubmitting?: boolean;
+  onSave: (
+    parameters: QcInspectionParameterInputDto[],
+    filesMap: Record<number, File>,
+    overallRemarks?: string
+  ) => void;
+  onReset?: () => void;
 }
 
-const DEPENDENT_PARAMETER_NAMES = [
-  'Rheometer ML',
-  'Rheometer MH',
-  'Scorch Time TS2',
-  'Cure Time TC90',
-];
+// Helper to identify Elongation parameter
+export const isElongationParam = (name: string): boolean => {
+  const n = name.toLowerCase();
+  return n.includes('elongation');
+};
 
-const ELONGATION_NAME = 'Elongation at Break';
+// Helper to identify the 4 parameters dependent on Elongation
+export const isDependentParam = (
+  name: string,
+  isDependentField?: boolean
+): boolean => {
+  if (isDependentField) return true;
+  const n = name.toLowerCase();
+  return (
+    n.includes('rheometer') ||
+    n.includes('scorch') ||
+    n.includes('cure time') ||
+    n.includes('ts2') ||
+    n.includes('tc90') ||
+    n === 'ml' ||
+    n === 'mh'
+  );
+};
 
 export function QcInspectionTable({
   specificationParameters,
   initialParameters = [],
-  onParametersChange,
-  onFileUpload,
-  onFileDelete,
-  existingFiles = {},
-  isLoading = false,
+  initialRemarks = '',
+  isRetest = false,
+  retestInspectionId = null,
   isSubmitting = false,
+  onSave,
+  onReset,
 }: QcInspectionTableProps) {
-  const [parameters, setParameters] = useState<QcInspectionParameterInputDto[]>(
-    initialParameters.length > 0
-      ? initialParameters
-      : specificationParameters.map((p) => ({
-          specificationParameterId: p.id,
-          actualValue: undefined,
-          result: undefined,
-          observations: undefined,
-          isEnabled: p.isEnabled ?? true,
-        }))
-  );
-  const [expandedObservations, setExpandedObservations] = useState<Set<number>>(new Set());
-  const [uploadingFiles, setUploadingFiles] = useState<Set<number>>(new Set());
+  const [rows, setRows] = useState<RowData[]>([]);
+  const [overallRemarks, setOverallRemarks] = useState(initialRemarks);
 
-  // Identify elongation parameter and dependent parameters
-  const elongationParam = useMemo(() =>
-    specificationParameters.find(p => p.name === ELONGATION_NAME || p.name.toLowerCase().includes('elongation')),
-    [specificationParameters]
-  );
+  // Sync rows whenever specificationParameters or initialParameters change
+  useEffect(() => {
+    if (!specificationParameters || specificationParameters.length === 0) {
+      setRows([]);
+      return;
+    }
 
-  const dependentParamIds = useMemo(() =>
-    specificationParameters
-      .filter(p => DEPENDENT_PARAMETER_NAMES.includes(p.name))
-      .map(p => p.id),
-    [specificationParameters]
-  );
+    // Check if Elongation was enabled in initial parameters (e.g. during retest)
+    const initialElongationParam = specificationParameters.find((p) =>
+      isElongationParam(p.name)
+    );
+    const initialElongationEnabled = initialParameters.find(
+      (p) => p.specificationParameterId === initialElongationParam?.id
+    )?.isEnabled ?? false;
 
-  const currentElongationEnabled = parameters.find(p =>
-    p.specificationParameterId === elongationParam?.id
-  )?.isEnabled;
+    const newRows: RowData[] = specificationParameters.map((spec) => {
+      const isDep = isDependentParam(spec.name, spec.isDependentOnElongation);
 
-  // Update parameter when changed
-  const updateParameter = useCallback((
-    paramId: number,
-    updates: Partial<QcInspectionParameterInputDto>
-  ) => {
-    setParameters(prev => prev.map(p =>
-      p.specificationParameterId === paramId ? { ...p, ...updates } : p
-    ));
-  }, []);
+      const existing = initialParameters.find(
+        (p) => p.specificationParameterId === spec.id
+      );
 
-  // Handle enable/disable toggle
-  const handleEnableToggle = useCallback((paramId: number, enabled: boolean) => {
-    setParameters(prev => prev.map(p => {
-      if (p.specificationParameterId !== paramId) return p;
-      const updated = { ...p, isEnabled: enabled };
-      
-      // If this is elongation parameter, sync dependent parameters
-      if (paramId === elongationParam?.id) {
-        if (!enabled) {
-          // Disable all dependent parameters
-          return { ...updated, actualValue: undefined, result: undefined, observations: undefined };
+      // Determine initial enabled state:
+      // If dependent: auto-enabled if Elongation is enabled, otherwise false
+      // If non-dependent: use existing.isEnabled or default to false
+      let isEnabled = false;
+      if (existing) {
+        isEnabled = existing.isEnabled ?? false;
+      }
+      if (isDep) {
+        isEnabled = initialElongationEnabled;
+      }
+
+      return {
+        specificationParameterId: spec.id,
+        name: spec.name,
+        unit: spec.unit || '',
+        testMethod: spec.testMethod || '',
+        targetValue: spec.targetValue,
+        tolerance: spec.tolerance,
+        toleranceType: spec.toleranceType,
+        isEnabled,
+        isDependent: isDep,
+        actualValue:
+          existing?.actualValue !== undefined && existing?.actualValue !== null
+            ? String(existing.actualValue)
+            : '',
+        status:
+          existing?.result === 'PASS' || existing?.result === 'FAIL'
+            ? existing.result
+            : '',
+        remarks: existing?.observations || '',
+        file: null,
+      };
+    });
+
+    setRows(newRows);
+  }, [specificationParameters, initialParameters]);
+
+  useEffect(() => {
+    if (initialRemarks) {
+      setOverallRemarks(initialRemarks);
+    }
+  }, [initialRemarks]);
+
+  // Is Elongation currently enabled?
+  const isElongationEnabled = useMemo(() => {
+    const elRow = rows.find((r) => isElongationParam(r.name));
+    return Boolean(elRow?.isEnabled);
+  }, [rows]);
+
+  // Toggle checkbox for a row
+  const handleToggleSelect = (paramId: number, checked: boolean) => {
+    setRows((prev) => {
+      const targetRow = prev.find((r) => r.specificationParameterId === paramId);
+      const isTogglingElongation = targetRow && isElongationParam(targetRow.name);
+
+      return prev.map((row) => {
+        if (row.specificationParameterId === paramId) {
+          return { ...row, isEnabled: checked };
         }
-      }
-      // If this is a dependent parameter being manually enabled, ensure elongation is enabled
-      const currentElongationEnabled = prev.find(p =>
-        p.specificationParameterId === elongationParam?.id
-      )?.isEnabled;
-      if (dependentParamIds.includes(paramId) && enabled && !currentElongationEnabled) {
-        // This shouldn't happen due to UI constraints, but safety check
-      }
-      return updated;
-    }));
-    
-    // Auto-enable/disable dependent parameters when elongation changes
-    if (paramId === elongationParam?.id) {
-      setParameters(prev => prev.map(p => {
-        if (dependentParamIds.includes(p.specificationParameterId)) {
+        // When user enables/disables Elongation, auto-enable/disable the dependent rows
+        if (isTogglingElongation && row.isDependent) {
           return {
-            ...p,
-            isEnabled: enabled,
-            ...(!enabled ? { actualValue: undefined, result: undefined, observations: undefined } : {}),
+            ...row,
+            isEnabled: checked, // Auto-enabled when Elongation checked, disabled when unchecked
           };
         }
-        return p;
-      }));
-    }
-  }, [elongationParam, dependentParamIds]);
-
-  // Handle file upload
-  const handleFileUpload = async (paramId: number, file: File) => {
-    if (!onFileUpload) return;
-    setUploadingFiles(prev => new Set(prev).add(paramId));
-    try {
-      await onFileUpload(paramId, file);
-      toast({ title: 'File uploaded successfully' });
-    } catch (error) {
-      toast({ title: 'Upload failed', description: 'Failed to upload file', variant: 'destructive' });
-    } finally {
-      setUploadingFiles(prev => {
-        const next = new Set(prev);
-        next.delete(paramId);
-        return next;
+        return row;
       });
-    }
+    });
   };
 
-  // Handle file delete
-  const handleFileDelete = async (fileId: number) => {
-    if (!onFileDelete) return;
-    try {
-      await onFileDelete(fileId);
-      toast({ title: 'File deleted successfully' });
-    } catch (error) {
-      toast({ title: 'Delete failed', description: 'Failed to delete file', variant: 'destructive' });
-    }
+  // Update actual value
+  const handleActualValueChange = (paramId: number, val: string) => {
+    setRows((prev) =>
+      prev.map((row) =>
+        row.specificationParameterId === paramId
+          ? { ...row, actualValue: val }
+          : row
+      )
+    );
   };
 
-  // Notify parent of changes
-  const notifyChange = useCallback((updatedParams: QcInspectionParameterInputDto[]) => {
-    onParametersChange(updatedParams);
-  }, [onParametersChange]);
+  // Update status dropdown
+  const handleStatusChange = (paramId: number, val: string) => {
+    setRows((prev) =>
+      prev.map((row) =>
+        row.specificationParameterId === paramId
+          ? { ...row, status: val as 'PASS' | 'FAIL' | '' }
+          : row
+      )
+    );
+  };
 
-  // Watch for parameter changes and notify parent
-  const prevParametersRef = useRef(parameters);
-  useEffect(() => {
-    if (prevParametersRef.current !== parameters) {
-      notifyChange(parameters);
-      prevParametersRef.current = parameters;
+  // Update remarks
+  const handleRemarksChange = (paramId: number, val: string) => {
+    setRows((prev) =>
+      prev.map((row) =>
+        row.specificationParameterId === paramId
+          ? { ...row, remarks: val }
+          : row
+      )
+    );
+  };
+
+  // Handle file select
+  const handleFileChange = (paramId: number, file: File | null) => {
+    if (file) {
+      // Validate file format (PDF, JPG, JPEG, PNG)
+      const allowedExts = ['pdf', 'jpg', 'jpeg', 'png'];
+      const ext = file.name.split('.').pop()?.toLowerCase();
+      if (!ext || !allowedExts.includes(ext)) {
+        toast({
+          title: 'Invalid file format',
+          description: 'Supported file types are PDF, JPG, JPEG, and PNG.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // 10MB limit
+      if (file.size > 10 * 1024 * 1024) {
+        toast({
+          title: 'File too large',
+          description: 'Maximum file size is 10 MB.',
+          variant: 'destructive',
+        });
+        return;
+      }
     }
-  }, [parameters, notifyChange]);
 
-  // Check if parameter is dependent
-  const isDependent = (paramId: number) => dependentParamIds.includes(paramId);
+    setRows((prev) =>
+      prev.map((row) =>
+        row.specificationParameterId === paramId
+          ? { ...row, file: file }
+          : row
+      )
+    );
+  };
 
-  // Check if parameter is elongation
-  const isElongation = (paramId: number) => paramId === elongationParam?.id;
+  // Reset functionality
+  const handleReset = () => {
+    const confirmed = window.confirm(
+      'Are you sure you want to reset the inspection? This will clear all entered actual values, statuses, uploaded files, and remarks.'
+    );
+    if (!confirmed) return;
 
-  // Get files for parameter
-  const getParameterFiles = (paramId: number) => existingFiles[paramId] || [];
+    setRows((prev) =>
+      prev.map((row) => ({
+        ...row,
+        isEnabled: false,
+        actualValue: '',
+        status: '',
+        remarks: '',
+        file: null,
+      }))
+    );
+    setOverallRemarks('');
+    if (onReset) onReset();
+    toast({ title: 'Inspection table reset.' });
+  };
 
-  if (isLoading) {
+  // Save / Submit functionality
+  const handleSave = () => {
+    // Only rows that are currently visible and enabled can be submitted
+    // Dependent rows are only visible/enabled when Elongation is enabled
+    const activeRows = rows.filter(
+      (r) => (!r.isDependent || isElongationEnabled) && r.isEnabled
+    );
+
+    // Validation 1: At least one parameter must be selected
+    if (activeRows.length === 0) {
+      toast({
+        title: 'Validation Error',
+        description: 'Please select at least one test parameter by checking its checkbox.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Validation 2: Each enabled row must have a valid actual value
+    for (const row of activeRows) {
+      if (!row.actualValue.trim()) {
+        toast({
+          title: 'Missing Input / Value',
+          description: `Please enter an actual value for "${row.name}".`,
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const numVal = Number(row.actualValue.trim());
+      if (isNaN(numVal)) {
+        toast({
+          title: 'Invalid Input / Value',
+          description: `The actual value for "${row.name}" must be a valid number.`,
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Validation 3: Each enabled row must have a status selected (PASS or FAIL)
+      if (!row.status) {
+        toast({
+          title: 'Missing Status',
+          description: `Please select a Status (Pass / Fail) for "${row.name}".`,
+          variant: 'destructive',
+        });
+        return;
+      }
+    }
+
+    // Build payload only for active submitted parameters
+    const submissionParameters: QcInspectionParameterInputDto[] = rows.map((r) => {
+      const isIncluded = (!r.isDependent || isElongationEnabled) && r.isEnabled;
+      return {
+        specificationParameterId: r.specificationParameterId,
+        actualValue:
+          isIncluded && r.actualValue.trim() ? Number(r.actualValue.trim()) : undefined,
+        result: isIncluded && r.status ? (r.status as 'PASS' | 'FAIL') : undefined,
+        observations: isIncluded ? r.remarks : undefined,
+        isEnabled: isIncluded,
+      };
+    });
+
+    // Build files map
+    const filesMap: Record<number, File> = {};
+    rows.forEach((r) => {
+      const isIncluded = (!r.isDependent || isElongationEnabled) && r.isEnabled;
+      if (isIncluded && r.file) {
+        filesMap[r.specificationParameterId] = r.file;
+      }
+    });
+
+    onSave(submissionParameters, filesMap, overallRemarks);
+  };
+
+  if (!specificationParameters || specificationParameters.length === 0) {
     return (
-      <div className="space-y-4">
-        <div className="h-8 bg-gray-100 rounded animate-pulse w-full" />
-        <div className="h-8 bg-gray-100 rounded animate-pulse w-full" />
-        <div className="h-8 bg-gray-100 rounded animate-pulse w-full" />
-        <div className="h-8 bg-gray-100 rounded animate-pulse w-full" />
-        <div className="h-8 bg-gray-100 rounded animate-pulse w-full" />
+      <div className="rounded-xl border border-dashed border-gray-300 p-8 text-center bg-gray-50">
+        <AlertCircle className="mx-auto h-8 w-8 text-gray-400 mb-2" />
+        <p className="text-gray-600 font-medium">
+          No QC specification parameters configured for this recipe.
+        </p>
+        <p className="text-sm text-gray-400 mt-1">
+          Please configure parameters in QC Specifications first.
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="overflow-x-auto">
-      <Table className="w-full">
-        <TableHeader>
-          <TableRow className="bg-gray-50">
-            <TableHead className="w-16 text-center">Enable</TableHead>
-            <TableHead className="w-48">Test Parameter</TableHead>
-            <TableHead className="w-40">Test Method</TableHead>
-            <TableHead className="w-20">Unit</TableHead>
-            <TableHead className="w-52">Specification (Set with tolerance)</TableHead>
-            <TableHead className="w-36">Actual Value</TableHead>
-            <TableHead className="w-32">Result</TableHead>
-            <TableHead className="w-24">Observations</TableHead>
-            <TableHead className="w-40">Upload File</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {specificationParameters.map((specParam) => {
-            const param = parameters.find(p => p.specificationParameterId === specParam.id);
-            const files = getParameterFiles(specParam.id);
-            const isDep = isDependent(specParam.id);
-            const disabled = isDep && !currentElongationEnabled;
-
-            return (
-              <TableRow
-                key={specParam.id}
-                className={isDep ? 'bg-yellow-50' : ''}
-              >
-                {/* Enable Checkbox */}
-                <TableCell className="text-center">
-                  <Checkbox
-                    checked={param?.isEnabled ?? true}
-                    onCheckedChange={checked => handleEnableToggle(specParam.id, checked as boolean)}
-                    disabled={disabled}
-                    aria-label={isDep ? 'Enable dependent parameter (requires Elongation at Break enabled)' : 'Enable parameter'}
-                  />
-                </TableCell>
-
-                {/* Test Parameter */}
-                <TableCell className="font-medium">
-                  <div className="flex items-center gap-2">
-                    {isElongation(specParam.id) && (
-                      <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded">Master</span>
-                    )}
-                    {isDep && (
-                      <span className="text-xs font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded">Dependent</span>
-                    )}
-                    <span className={disabled ? 'text-gray-400' : ''}>
-                      {specParam.name}
-                    </span>
-                  </div>
-                </TableCell>
-
-                {/* Test Method */}
-                <TableCell className="text-sm text-gray-600">
-                  {specParam.testMethod || '—'}
-                </TableCell>
-
-                {/* Unit */}
-                <TableCell className="text-sm text-gray-600 text-center">
-                  {specParam.unit || '—'}
-                </TableCell>
-
-                {/* Specification */}
-                <TableCell className="text-sm font-mono">
-                  {specParam.targetValue !== null && specParam.targetValue !== undefined ? (
-                    <>
-                      {specParam.targetValue}
-                      {specParam.tolerance && (
-                        <span className="text-gray-500 ml-1">
-                          ±{specParam.tolerance}{specParam.toleranceType === 'PERCENTAGE' ? '%' : ''}
-                        </span>
-                      )}
-                    </>
-                  ) : (
-                    <span className="text-gray-400">—</span>
-                  )}
-                </TableCell>
-
-                {/* Actual Value */}
-                <TableCell>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={param?.actualValue?.toString() || ''}
-                    onChange={e => updateParameter(specParam.id, {
-                      actualValue: e.target.value ? parseFloat(e.target.value) : undefined
-                    })}
-                    disabled={disabled || !param?.isEnabled}
-                    placeholder="Enter value"
-                    className="w-full"
-                  />
-                </TableCell>
-
-                {/* Result Dropdown */}
-                <TableCell>
-                  <Select
-                    value={param?.result || ''}
-                    onValueChange={value => updateParameter(specParam.id, {
-                      result: value as QcParameterResult || undefined
-                    })}
-                    disabled={disabled || !param?.isEnabled}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select Result" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="PASS">PASS</SelectItem>
-                      <SelectItem value="FAIL">FAIL</SelectItem>
-                      <SelectItem value="RETEST">RETEST</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </TableCell>
-
-                {/* Observations */}
-                <TableCell>
-                  <div className="relative">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8 w-full justify-start text-left px-2"
-                      onClick={() => setExpandedObservations(prev =>
-                        new Set(prev).has(specParam.id)
-                          ? new Set([...prev].filter(id => id !== specParam.id))
-                          : new Set([...prev, specParam.id])
-                      )}
-                    >
-                      {param?.observations ? (
-                        <span className="text-blue-600">View</span>
-                      ) : (
-                        <span className="text-gray-400">Add</span>
-                      )}
-                    </Button>
-
-                    {expandedObservations.has(specParam.id) && (
-                      <div className="absolute z-10 bottom-full left-0 right-0 mb-1 bg-white border rounded-lg shadow-lg p-3 w-72">
-                        <Textarea
-                          value={param?.observations || ''}
-                          onChange={e => updateParameter(specParam.id, {
-                            observations: e.target.value
-                          })}
-                          placeholder="Enter observations for FAIL/RETEST..."
-                          rows={3}
-                          className="w-full"
-                          disabled={disabled || !param?.isEnabled}
-                        />
-                        <div className="flex justify-end gap-2 mt-2">
-                          <Button
-                            size="sm"
-                            onClick={() => setExpandedObservations(prev => {
-                              const next = new Set(prev);
-                              next.delete(specParam.id);
-                              return next;
-                            })}
-                          >
-                            Close
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </TableCell>
-
-                {/* Upload File */}
-                <TableCell>
-                  <div className="space-y-2">
-                    {files.length > 0 && (
-                      <div className="space-y-1">
-                        {files.map(file => (
-                          <div key={file.id} className="flex items-center justify-between text-xs bg-gray-50 px-2 py-1 rounded">
-                            <span className="truncate max-w-[120px]">{file.fileName}</span>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleFileDelete(file.id)}
-                              disabled={isSubmitting}
-                            >
-                              <AlertCircle className="w-4 h-4 text-red-500" />
-                            </Button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    <input
-                      type="file"
-                      onChange={e => e.target.files?.[0] && handleFileUpload(specParam.id, e.target.files[0])}
-                      disabled={disabled || !param?.isEnabled || uploadingFiles.has(specParam.id)}
-                      accept=".pdf,.jpg,.jpeg,.png"
-                      className="w-full text-sm"
-                    />
-                    {uploadingFiles.has(specParam.id) && (
-                      <div className="text-xs text-blue-600">Uploading...</div>
-                    )}
-                  </div>
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
-
-      {/* Validation Summary */}
-      <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-        <h4 className="font-medium text-gray-900 mb-2">Validation Summary</h4>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-          <div>
-            <span className="text-gray-600">Total Parameters: </span>
-            <span className="font-medium">{specificationParameters.length}</span>
-          </div>
-          <div>
-            <span className="text-gray-600">Enabled: </span>
-            <span className="font-medium text-green-600">
-              {parameters.filter(p => p.isEnabled).length}
-            </span>
-          </div>
-          <div>
-            <span className="text-gray-600">With Values: </span>
-            <span className="font-medium">
-              {parameters.filter(p => p.isEnabled && p.actualValue !== undefined).length}
-            </span>
-          </div>
-          <div>
-            <span className="text-gray-600">With Results: </span>
-            <span className="font-medium">
-              {parameters.filter(p => p.isEnabled && p.result).length}
-            </span>
+    <div className="space-y-4">
+      {/* Retest Banner if in retest mode */}
+      {isRetest && (
+        <div className="flex items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-900 shadow-sm">
+          <AlertCircle className="h-5 w-5 text-amber-600 shrink-0" />
+          <div className="text-sm">
+            <span className="font-semibold">Retest Mode Active:</span> Editing QC Inspection #{retestInspectionId}.
+            Please review and re-test the required parameters. Note: This retest can only be performed once.
           </div>
         </div>
-        {parameters.some(p => p.isEnabled && (p.result === 'FAIL' || p.result === 'RETEST') && !p.observations) && (
-          <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
-            <AlertCircle className="w-4 h-4 inline mr-1" />
-            Observations required for FAIL/RETEST results
-          </div>
-        )}
-        {parameters.filter(p => p.isEnabled).some(p => !p.actualValue) && (
-          <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-700">
-            <AlertTriangle className="w-4 h-4 inline mr-1" />
-            Some enabled parameters missing actual values
-          </div>
-        )}
-        {parameters.filter(p => p.isEnabled).some(p => !p.result) && (
-          <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-700">
-            <AlertTriangle className="w-4 h-4 inline mr-1" />
-            Some enabled parameters missing result selection
-          </div>
-        )}
+      )}
+
+      {/* Section Heading & Description */}
+      <div className="border-b border-gray-100 pb-2">
+        <h3 className="text-base font-semibold text-gray-900">
+          B Label – Enter Actual Test Values
+        </h3>
+        <p className="mt-0.5 text-sm text-gray-500">
+          Select the test parameters you want to enter values for and provide the required details.
+        </p>
+      </div>
+
+      {/* Responsive Table Container */}
+      <div className="overflow-x-auto rounded-xl border border-blue-200 bg-white shadow-sm">
+        <table className="w-full border-collapse text-left text-sm">
+          {/* Light Blue Table Header */}
+          <thead>
+            <tr className="border-b border-blue-200 bg-[#EBF3FC] text-slate-800">
+              <th className="w-16 px-4 py-3.5 text-center font-semibold border-r border-blue-100">
+                Select
+              </th>
+              <th className="min-w-[190px] px-4 py-3.5 font-semibold border-r border-blue-100">
+                Test Parameter
+              </th>
+              <th className="min-w-[180px] px-4 py-3.5 font-semibold border-r border-blue-100">
+                Input / Value
+              </th>
+              <th className="min-w-[150px] px-4 py-3.5 font-semibold border-r border-blue-100">
+                Status
+              </th>
+              <th className="min-w-[200px] px-4 py-3.5 font-semibold border-r border-blue-100">
+                Upload File
+              </th>
+              <th className="min-w-[200px] px-4 py-3.5 font-semibold">
+                Remarks
+              </th>
+            </tr>
+          </thead>
+
+          {/* Table Body */}
+          <tbody className="divide-y divide-gray-150 bg-white">
+            {rows.map((row) => {
+              // If this is a dependent parameter and Elongation is not enabled, DO NOT display it!
+              if (row.isDependent && !isElongationEnabled) {
+                return null;
+              }
+
+              const fileInputId = `file-input-${row.specificationParameterId}`;
+              const isEnabled = row.isEnabled;
+              const isDependent = row.isDependent;
+
+              // Row background styling: same as other parameters
+              const rowBgClass = isEnabled
+                ? 'bg-white hover:bg-blue-50/20'
+                : 'bg-gray-50/60 text-gray-400';
+
+              return (
+                <tr
+                  key={row.specificationParameterId}
+                  className={`transition-colors ${rowBgClass}`}
+                >
+                  {/* 1. Select Column */}
+                  <td className="px-4 py-3.5 text-center border-r border-gray-100 align-middle">
+                    {isDependent ? (
+                      /* No checkbox for the 4 dependent parameters under Elongation per requirement - clean sub-indicator */
+                      <div className="flex items-center justify-center" title="Auto-enabled with Elongation">
+                        <span className="inline-flex items-center justify-center h-6 w-6 rounded bg-blue-50 text-blue-700 font-bold text-xs">
+                          ↳
+                        </span>
+                      </div>
+                    ) : (
+                      /* Standard checkbox for normal parameters */
+                      <div className="flex items-center justify-center">
+                        <Checkbox
+                          id={`check-${row.specificationParameterId}`}
+                          checked={isEnabled}
+                          onCheckedChange={(checked) =>
+                            handleToggleSelect(
+                              row.specificationParameterId,
+                              Boolean(checked)
+                            )
+                          }
+                          className="h-5 w-5 rounded border-gray-300 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600 cursor-pointer"
+                        />
+                      </div>
+                    )}
+                  </td>
+
+                  {/* 2. Test Parameter */}
+                  <td className="px-4 py-3.5 border-r border-gray-100 align-middle">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {isDependent && (
+                        <span className="text-blue-500 font-bold mr-0.5">↳</span>
+                      )}
+                      <label
+                        htmlFor={!isDependent ? `check-${row.specificationParameterId}` : undefined}
+                        className={`font-medium ${
+                          isDependent
+                            ? 'text-gray-900 cursor-default'
+                            : isEnabled
+                            ? 'text-gray-900 cursor-pointer'
+                            : 'text-gray-500 cursor-pointer'
+                        }`}
+                      >
+                        {row.name}
+                      </label>
+                    </div>
+
+                    <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-gray-500">
+                      {row.testMethod && (
+                        <span className="font-mono text-[11px] text-gray-500">
+                          {row.testMethod}
+                        </span>
+                      )}
+                      {row.targetValue !== undefined && row.targetValue !== null && (
+                        <span className="inline-flex items-center rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[11px] text-gray-700">
+                          Target: {row.targetValue} {row.unit}
+                          {row.tolerance
+                            ? ` ±${row.tolerance}${row.toleranceType === 'PERCENTAGE' ? '%' : ''}`
+                            : ''}
+                        </span>
+                      )}
+                      {!row.targetValue && row.unit && (
+                        <span className="text-gray-400">({row.unit})</span>
+                      )}
+                    </div>
+                  </td>
+
+                  {/* 3. Input / Value */}
+                  <td className="px-4 py-3.5 border-r border-gray-100 align-middle">
+                    <Input
+                      type="number"
+                      step="any"
+                      disabled={!isEnabled}
+                      value={row.actualValue}
+                      onChange={(e) =>
+                        handleActualValueChange(
+                          row.specificationParameterId,
+                          e.target.value
+                        )
+                      }
+                      placeholder={
+                        row.targetValue !== undefined && row.targetValue !== null
+                          ? `Enter value (e.g. ${row.targetValue})`
+                          : 'Enter value (e.g. 0.2)'
+                      }
+                      className={`h-9 w-full bg-white transition-all text-sm font-medium ${
+                        isEnabled
+                          ? 'border-gray-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
+                          : 'bg-gray-100/70 border-gray-200 text-gray-400 cursor-not-allowed placeholder:text-gray-300'
+                      }`}
+                    />
+                  </td>
+
+                  {/* 4. Status Dropdown */}
+                  <td className="px-4 py-3.5 border-r border-gray-100 align-middle">
+                    <select
+                      disabled={!isEnabled}
+                      value={row.status}
+                      onChange={(e) =>
+                        handleStatusChange(
+                          row.specificationParameterId,
+                          e.target.value
+                        )
+                      }
+                      className={`h-9 w-full rounded-md border px-3 py-1.5 text-sm font-medium transition-all ${
+                        !isEnabled
+                          ? 'bg-gray-100/70 border-gray-200 text-gray-400 cursor-not-allowed'
+                          : row.status === 'PASS'
+                          ? 'border-green-300 bg-green-50/70 text-green-700 font-semibold focus:border-green-500'
+                          : row.status === 'FAIL'
+                          ? 'border-red-300 bg-red-50/70 text-red-700 font-semibold focus:border-red-500'
+                          : 'border-gray-200 bg-white text-gray-700 focus:border-blue-500'
+                      }`}
+                    >
+                      <option value="" className="text-gray-500 font-normal">
+                        Select Status
+                      </option>
+                      <option value="PASS" className="text-green-700 font-medium">
+                        Pass
+                      </option>
+                      <option value="FAIL" className="text-red-700 font-medium">
+                        Fail
+                      </option>
+                    </select>
+                  </td>
+
+                  {/* 5. Upload File */}
+                  <td className="px-4 py-3.5 border-r border-gray-100 align-middle">
+                    <input
+                      id={fileInputId}
+                      type="file"
+                      disabled={!isEnabled}
+                      accept=".pdf,.jpg,.jpeg,.png"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null;
+                        handleFileChange(row.specificationParameterId, file);
+                        e.target.value = '';
+                      }}
+                    />
+
+                    {row.file ? (
+                      <div className="flex items-center justify-between gap-1.5 rounded-md border border-blue-200 bg-white px-2.5 py-1.5 text-xs text-blue-900 shadow-2xs">
+                        <div className="flex items-center gap-1.5 overflow-hidden">
+                          <FileText className="h-4 w-4 shrink-0 text-blue-600" />
+                          <span
+                            className="truncate max-w-[120px] font-medium"
+                            title={row.file.name}
+                          >
+                            {row.file.name}
+                          </span>
+                        </div>
+                        {isEnabled && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleFileChange(row.specificationParameterId, null)
+                            }
+                            className="rounded p-0.5 text-blue-500 hover:bg-blue-100 hover:text-red-600 transition-colors"
+                            title="Remove file"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <label
+                        htmlFor={isEnabled ? fileInputId : undefined}
+                        className={`inline-flex items-center justify-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium shadow-xs transition-all ${
+                          isEnabled
+                            ? 'cursor-pointer border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+                            : 'cursor-not-allowed border-gray-200 bg-gray-100/70 text-gray-400'
+                        }`}
+                      >
+                        <Upload className="h-3.5 w-3.5 text-gray-400" />
+                        <span>Choose File</span>
+                      </label>
+                    )}
+                  </td>
+
+                  {/* 6. Remarks */}
+                  <td className="px-4 py-3.5 align-middle">
+                    <Input
+                      type="text"
+                      disabled={!isEnabled}
+                      value={row.remarks}
+                      onChange={(e) =>
+                        handleRemarksChange(
+                          row.specificationParameterId,
+                          e.target.value
+                        )
+                      }
+                      placeholder={isEnabled ? 'Remarks (optional)' : ''}
+                      className={`h-9 w-full bg-white text-sm transition-all ${
+                        isEnabled
+                          ? 'border-gray-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500'
+                          : 'bg-gray-100/70 border-gray-200 text-gray-400 cursor-not-allowed'
+                      }`}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* General Inspection Remarks (Optional) */}
+      <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-4">
+        <label className="block text-xs font-semibold uppercase tracking-wider text-gray-600 mb-1.5">
+          General Inspection Remarks (Optional)
+        </label>
+        <Input
+          type="text"
+          value={overallRemarks}
+          onChange={(e) => setOverallRemarks(e.target.value)}
+          placeholder="Enter any additional inspection notes or general observations..."
+          className="bg-white border-gray-200 text-sm"
+        />
+      </div>
+
+      {/* Reset & Save Inspection Buttons */}
+      <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-3 pt-2">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={handleReset}
+          disabled={isSubmitting}
+          className="border-gray-300 text-gray-700 hover:bg-gray-100 hover:text-gray-900 gap-1.5"
+        >
+          <RotateCcw className="h-4 w-4 text-gray-500" />
+          <span>Reset</span>
+        </Button>
+
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            onClick={handleSave}
+            disabled={isSubmitting}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-2 shadow-sm gap-2"
+          >
+            {isSubmitting ? (
+              <span>Saving inspection...</span>
+            ) : (
+              <>
+                <FileCheck className="h-4 w-4" />
+                <span>{isRetest ? 'Save Retest' : 'Save Inspection'}</span>
+              </>
+            )}
+          </Button>
+        </div>
       </div>
     </div>
   );
 }
+export default QcInspectionTable;
