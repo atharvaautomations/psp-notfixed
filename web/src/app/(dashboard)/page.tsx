@@ -71,9 +71,7 @@ export default function Index() {
     window.history.replaceState(null, '', `${url.pathname}${url.search}`);
   }, [unitFilter, filterReady]);
 
-  const { data: summary, isLoading: summaryLoading } = useDashboardSummary({
-    unit: unitFilter,
-  });
+  const { data: summary, isLoading: summaryLoading } = useDashboardSummary({});
   const { data: activity = [], isLoading: activityLoading } =
     useDashboardActivity({ unit: unitFilter });
   const { data: trend = [], isLoading: trendLoading } = useDashboardTrend({
