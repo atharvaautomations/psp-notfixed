@@ -2,11 +2,15 @@
 
 import { Header, PageContainer } from '@/components/global';
 import { useExecutionTracking } from '@/hooks/useExecutionTracking';
+import type { ProcessTrackingItem } from '@/hooks/useExecutionTracking';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useRouter } from 'next/navigation';
 
-function batchWorkflowLabel(value: string): string {
+function batchWorkflowLabel(value: string | undefined): string {
+  if (!value) {
+    return '—';
+  }
   switch (value) {
     case 'KNEADER_ONLY':
       return 'Kneader Only';
@@ -17,7 +21,7 @@ function batchWorkflowLabel(value: string): string {
     case 'MIXING_MASTER_AND_FINAL_BATCH':
       return 'Master + Final Batch';
     default:
-      return value;
+      return value.split('_').map((w) => w.charAt(0) + w.slice(1).toLowerCase()).join(' ');
   }
 }
 
@@ -98,69 +102,76 @@ export default function ProcessTrackingPage() {
                   </td>
                 </tr>
               ) : (
-                executions.map((execution: any) => (
-                  <tr
-                    key={execution.id}
-                    className="border-b last:border-b-0 hover:bg-gray-50"
-                  >
-                    <td className="px-6 py-4 font-medium">
-                      {execution.executionCode}
-                    </td>
+                executions.map((execution: ProcessTrackingItem) => {
+                  const completed = execution.completedBatches ?? 0;
+                  const total = execution.totalBatches ?? 0;
+                  const pct = Math.min(100, Math.max(0, Number(execution.progress) || 0));
 
-                    <td className="px-6 py-4">
-                      <div>
-                        <div className="font-medium">
-                          {execution.recipeCode}
+                  return (
+                    <tr
+                      key={execution.id}
+                      className="border-b last:border-b-0 hover:bg-gray-50"
+                    >
+                      <td className="px-6 py-4 font-medium">
+                        {execution.executionCode}
+                      </td>
+
+                      <td className="px-6 py-4">
+                        <div>
+                          <div className="font-medium">
+                            {execution.recipeCode || '—'}
+                          </div>
+
+                          <div className="text-xs text-gray-500">
+                            {execution.recipeName}
+                          </div>
                         </div>
+                      </td>
 
-                        <div className="text-xs text-gray-500">
-                          {execution.recipeName}
+                      <td className="px-6 py-4">
+                        <span className="text-xs font-medium">
+                          {batchWorkflowLabel(execution.workflow)}
+                        </span>
+                      </td>
+
+                      <td className="px-6 py-4 text-center">
+                        {completed}/{total}
+                      </td>
+
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="h-2 w-24 overflow-hidden rounded-full bg-gray-200">
+                            <div
+                              className="h-full rounded-full bg-blue-500 transition-all"
+                              style={{
+                                width: `${pct}%`,
+                              }}
+                              title={`${completed} of ${total} batches completed`}
+                            />
+                          </div>
+
+                          <span className="text-sm">{pct}%</span>
                         </div>
-                      </div>
-                    </td>
+                      </td>
 
-                    <td className="px-6 py-4">
-                      <span className="text-xs font-medium">
-                        {batchWorkflowLabel(execution.workflow)}
-                      </span>
-                    </td>
+                      <td className="px-6 py-4">
+                        <span className="rounded-full bg-yellow-100 px-3 py-1 text-xs font-medium text-yellow-700">
+                          {execution.status}
+                        </span>
+                      </td>
 
-                    <td className="px-6 py-4 text-center">
-                      {execution.completedBatches}/{execution.totalBatches}
-                    </td>
-
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="h-2 w-24 overflow-hidden rounded-full bg-gray-200">
-                          <div
-                            className="h-full rounded-full bg-blue-500"
-                            style={{
-                              width: `${execution.progress}%`,
-                            }}
-                          />
-                        </div>
-
-                        <span className="text-sm">{execution.progress}%</span>
-                      </div>
-                    </td>
-
-                    <td className="px-6 py-4">
-                      <span className="rounded-full bg-yellow-100 px-3 py-1 text-xs font-medium text-yellow-700">
-                        {execution.status}
-                      </span>
-                    </td>
-
-                    <td className="px-6 py-4 text-right">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => router.push(`/process/${execution.id}`)}
-                      >
-                        View
-                      </Button>
-                    </td>
-                  </tr>
-                ))
+                      <td className="px-6 py-4 text-right">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => router.push(`/process/${execution.id}`)}
+                        >
+                          View
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
