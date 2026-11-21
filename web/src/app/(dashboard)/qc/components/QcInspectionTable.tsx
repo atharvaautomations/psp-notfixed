@@ -26,7 +26,7 @@ export interface RowData {
   targetValue?: number;
   tolerance?: number;
   toleranceType?: string;
-  specification: string;
+  specificationText: string;
   isEnabled: boolean;
   isDependent: boolean;
   parentParameter?: string;
@@ -130,12 +130,12 @@ const QcInspectionTable = React.forwardRef<{ getFormData: () => { parameters: Qc
       return {
         specificationParameterId: spec.id,
         name: spec.name,
-        unit: '',
-        testMethod: '',
+        unit: existing?.unit ?? '',
+        testMethod: existing?.testMethod ?? '',
         targetValue: spec.targetValue,
         tolerance: spec.tolerance,
         toleranceType: spec.toleranceType,
-        specification: '',
+        specificationText: existing?.specificationText ?? '',
         isEnabled,
         isDependent: isDep,
         parentParameter: isDep ? 'Rheometer' : undefined,
@@ -169,6 +169,12 @@ const QcInspectionTable = React.forwardRef<{ getFormData: () => { parameters: Qc
           actualValue: r.actualValue !== undefined && r.actualValue !== '' ? r.actualValue : undefined,
           result: r.status || undefined,
           isEnabled: r.isEnabled,
+          testMethod: r.testMethod !== undefined && r.testMethod !== '' ? r.testMethod : undefined,
+          unit: r.unit !== undefined && r.unit !== '' ? r.unit : undefined,
+          specificationText:
+            r.specificationText !== undefined && r.specificationText !== ''
+              ? r.specificationText
+              : undefined,
         })),
         filesMap,
       };
@@ -255,7 +261,7 @@ const QcInspectionTable = React.forwardRef<{ getFormData: () => { parameters: Qc
     setRows((prev) =>
       prev.map((row) =>
         row.specificationParameterId === paramId
-          ? { ...row, specification: val }
+          ? { ...row, specificationText: val }
           : row
       )
     );
@@ -369,7 +375,7 @@ const QcInspectionTable = React.forwardRef<{ getFormData: () => { parameters: Qc
         isEnabled: isIncluded,
         testMethod: r.testMethod,
         unit: r.unit,
-        specification: r.specification,
+        specificationText: r.specificationText,
       };
     });
 
@@ -579,7 +585,7 @@ const QcInspectionTable = React.forwardRef<{ getFormData: () => { parameters: Qc
                       <Input
                         type="text"
                         disabled={!isEnabled}
-                        value={row.specification}
+                        value={row.specificationText}
                         onChange={(e) =>
                           handleSpecificationChange(
                             row.specificationParameterId,

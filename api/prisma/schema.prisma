@@ -612,6 +612,7 @@ model QcInspectionParameter {
   actualValue String?
   unit String?
   testMethod String?
+  specificationText String?
 
   result QcParameterResult?
   observations String?

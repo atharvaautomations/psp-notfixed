@@ -397,13 +397,15 @@ export default function QcHistoryTable({ className = '', onRetest }: Props) {
                               {p.specificationParameter?.name || 'N/A'}
                             </td>
                             <td className="px-4 py-3 font-mono text-xs text-gray-500">
-                              {p.specificationParameter?.testMethod || '—'}
+                              {p.testMethod || p.specificationParameter?.testMethod || '—'}
                             </td>
                             <td className="px-4 py-3 text-gray-600">
-                              {p.specificationParameter?.unit || '—'}
+                              {p.unit || p.specificationParameter?.unit || '—'}
                             </td>
                             <td className="px-4 py-3 text-gray-600">
-                              {p.specificationParameter?.targetValue !== undefined ? (
+                              {p.specificationText !== undefined && p.specificationText !== '' ? (
+                                p.specificationText
+                              ) : p.specificationParameter?.targetValue !== undefined ? (
                                 <>
                                   {p.specificationParameter.targetValue}
                                   {p.specificationParameter.unit || ''}

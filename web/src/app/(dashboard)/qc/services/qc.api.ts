@@ -73,7 +73,7 @@ export interface QcInspectionParameterInputDto {
   isEnabled?: boolean;
   testMethod?: string;
   unit?: string;
-  specification?: string;
+  specificationText?: string | null;
 }
 
 export interface InspectionPayload {
@@ -106,10 +106,13 @@ export interface QcInspectionParameter {
   inspectionId: number;
   specificationParameterId: number;
   specificationParameter?: QcSpecificationParameter;
-  actualValue?: number;
+  actualValue?: string | null;
   result?: 'PASS' | 'FAIL' | 'RETEST';
   observations?: string;
   isEnabled: boolean;
+  testMethod?: string | null;
+  unit?: string | null;
+  specificationText?: string | null;
   files?: QcInspectionFile[];
 }
 

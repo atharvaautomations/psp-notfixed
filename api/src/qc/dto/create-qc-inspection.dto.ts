@@ -32,7 +32,7 @@ export class QcInspectionParameterInputDto {
 
   @IsOptional()
   @IsString()
-  specification?: string;
+  specificationText?: string;
 }
 
 export class CreateQcInspectionDto {

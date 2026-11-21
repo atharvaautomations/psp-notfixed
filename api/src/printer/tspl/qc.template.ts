@@ -1,3 +1,5 @@
+import { MixingLabelData } from '../types/mixing-label-data';
+
 export interface QcLabelData {
   qrId: string;
   recipeCode: string;
@@ -34,50 +36,39 @@ export function buildQcLabel(data: QcLabelData): string {
 
     'BOX 4,4,770,370,5',
 
-    `TEXT 130,20,"0",0,18,15,"${title}"`,
+    `TEXT 240,20,"0",0,18,15,"${title}"`,
 
     'BAR 4,70,765,5',
 
     `QRCODE 70,120,M,8,A,0,M2,"${escapeTsplText(data.qrId)}"`,
 
-    `TEXT 90,300,"0",0,9,9,"${escapeTsplText(data.qrId)}"`,
+    `TEXT 50,300,"0",0,9,9,"${escapeTsplText(data.qrId)}"`,
+
+    'BAR 300,70,5,300',
   ];
-
-  // Recipe
-  lines.push(
-    `TEXT 330,80,"0",0,9,9,"RECIPE : ${escapeTsplText(data.recipeCode)}"`
-  );
-
-  // Batch Number
-  lines.push(
-    `TEXT 330,110,"0",0,9,9,"BATCH NO : ${escapeTsplText(
-      String(data.batchNumber ?? data.qrId)
-    )}"`
-  );
-
   // Customer Name
   lines.push(
-    `TEXT 330,140,"0",0,9,9,"CUSTOMER : ${escapeTsplText(
+    `TEXT 330,110,"0",0,9,9,"CUSTOMER : ${escapeTsplText(
       data.customerName ?? ''
     )}"`
   );
-
+  
   // Part Name
   lines.push(
-    `TEXT 330,170,"0",0,9,9,"PART NAME : ${escapeTsplText(
+    `TEXT 330,140,"0",0,9,9,"PART NAME : ${escapeTsplText(
       data.partName ?? ''
     )}"`
   );
 
   // Part Number
   lines.push(
-    `TEXT 330,200,"0",0,9,9,"PART NO : ${escapeTsplText(data.partNumber ?? '')}"`
+    `TEXT 330,170,"0",0,9,9,"PART NO : ${escapeTsplText(data.partNumber ?? '')}"`
   );
 
-  // Compound Name
+  // Batch Number
   lines.push(
-    `TEXT 330,230,"0",0,9,9,"COMPOUND : ${escapeTsplText(
-      data.compoundName ?? ''
+    `TEXT 330,200,"0",0,9,9,"BATCH NO : ${escapeTsplText(
+      String(data.batchNumber ?? data.qrId)
     )}"`
   );
 
@@ -86,22 +77,24 @@ export function buildQcLabel(data: QcLabelData): string {
     data.shift ? ` / ${data.shift}` : ''
   }`;
   lines.push(
-    `TEXT 330,260,"0",0,9,9,"MIXING : ${escapeTsplText(mixingInfo)}"`
+    `TEXT 330,230,"0",0,9,9,"MIXING : ${escapeTsplText(mixingInfo)}"`
   );
 
   // Expiry Date
   lines.push(
-    `TEXT 330,290,"0",0,9,9,"EXPIRY : ${escapeTsplText(data.expiryDate ?? '')}"`
+    `TEXT 330,260,"0",0,9,9,"EXPIRY : ${escapeTsplText(data.expiryDate ?? '')}"`
+  );
+
+  // Compound Name
+  lines.push(
+    `TEXT 330,290,"0",0,9,9,"COMPOUND : ${escapeTsplText(
+      data.compoundName ?? ''
+    )}"`
   );
 
   // QC Result
   lines.push(
     `TEXT 330,320,"0",0,10,10,"QC RESULT : ${escapeTsplText(data.qcResult)}"`
-  );
-
-  // Date
-  lines.push(
-    `TEXT 330,350,"0",0,9,9,"DATE : ${formatDate(data.completedAt)}"`
   );
 
   // Julian date at bottom right

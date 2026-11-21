@@ -30,13 +30,13 @@ export function buildMixingLabel(data: MixingLabelData): string {
 
     'BOX 4,4,770,370,5',
 
-    `TEXT 130,20,"0",0,18,15,"${title}"`,
+    `TEXT 240,20,"0",0,18,15,"${title}"`,
 
     'BAR 4,70,765,5',
 
     `QRCODE 70,120,M,8,A,0,M2,"${escapeTsplText(data.qrId)}"`,
 
-    `TEXT 90,300,"0",0,9,9,"${escapeTsplText(data.qrId)}"`,
+    `TEXT 50,300,"0",0,9,9,"${escapeTsplText(data.qrId)}"`,
 
     'BAR 300,70,5,300',
   ];

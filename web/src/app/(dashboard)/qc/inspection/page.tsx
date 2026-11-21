@@ -190,6 +190,9 @@ export default function QcInspectionWorkspace() {
                 : undefined,
             result: p.result,
             isEnabled: p.isEnabled ?? false,
+            testMethod: p.testMethod ?? undefined,
+            unit: p.unit ?? undefined,
+            specificationText: p.specificationText ?? undefined,
           }))
         );
       } catch (err) {
@@ -202,6 +205,9 @@ export default function QcInspectionWorkspace() {
               actualValue: undefined,
               result: undefined,
               isEnabled: true,
+              testMethod: p.testMethod ?? undefined,
+              unit: p.unit ?? undefined,
+              specificationText: undefined,
             }))
           );
         }

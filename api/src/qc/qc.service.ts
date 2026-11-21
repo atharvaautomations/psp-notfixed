@@ -279,6 +279,8 @@ export class QcService {
       throw new BadRequestException('QC Specification not found for this recipe.');
     }
 
+    const specParamMap = new Map(specification.parameters.map(p => [p.id, p]));
+
     // Filter enabled parameters
     const enabledParams = dto.parameters.filter((p) => p.isEnabled !== false);
 
@@ -293,10 +295,14 @@ export class QcService {
     for (const param of enabledParams) {
       // Skip Rheometer parent - it's a category header, not a measurable parameter
       if (param.specificationParameterId) {
-        const specParam = await this.prisma.qcSpecificationParameter.findUnique({
-          where: { id: param.specificationParameterId },
-        });
+        const specParam = specParamMap.get(param.specificationParameterId);
         if (specParam && specParam.name === 'Rheometer') continue;
+      }
+
+      if (!specParamMap.has(param.specificationParameterId)) {
+        throw new BadRequestException(
+          'Invalid test parameter for this recipe specification.'
+        );
       }
 
       if (!param.actualValue || param.actualValue.trim() === '') {
@@ -358,15 +364,7 @@ export class QcService {
             testedAt: new Date(),
             inspectedById: userId,
             parameters: {
-              create: dto.parameters.map((param) => ({
-                specificationParameter: {
-                  connect: { id: param.specificationParameterId },
-                },
-                actualValue: param.actualValue as any,
-                result: param.result,
-                observations: param.observations || '',
-                isEnabled: param.isEnabled ?? true,
-              })),
+              create: this.buildParameterRows(dto, specParamMap),
             },
           },
           include: {
@@ -395,15 +393,7 @@ export class QcService {
           remarks: dto.remarks || '',
           status: overallResult === 'PASS' ? QcStatus.PASS : QcStatus.FAIL,
           parameters: {
-            create: dto.parameters.map((param) => ({
-              specificationParameter: {
-                connect: { id: param.specificationParameterId },
-              },
-              actualValue: param.actualValue as any,
-              result: param.result,
-              observations: param.observations || '',
-              isEnabled: param.isEnabled ?? true,
-            })),
+            create: this.buildParameterRows(dto, specParamMap),
           },
         },
         include: {
@@ -436,6 +426,23 @@ export class QcService {
     return QcStatus.PASS;
   }
 
+  private buildParameterRows(dto: CreateQcInspectionDto, specParamMap: Map<number, any>) {
+    return dto.parameters.map((param) => {
+      const specParam = specParamMap.get(param.specificationParameterId);
+      return {
+        specificationParameter: { connect: { id: param.specificationParameterId } },
+        actualValue: param.actualValue ?? null,
+        result: param.result,
+        observations: param.observations || '',
+        isEnabled: param.isEnabled ?? true,
+        testMethod: param.testMethod ?? null,
+        unit: param.unit ?? null,
+        specificationText: param.specificationText ?? null,
+        targetValue: specParam?.targetValue ?? null,
+      };
+    });
+  }
+
   async findAllInspections() {
     return this.prisma.qcInspection.findMany({
       include: {
@@ -457,6 +464,7 @@ export class QcService {
         files: true,
         retestAudits: true,
         labelInfo: true,
+        inspectedBy: { select: { id: true, name: true } },
       },
       orderBy: {
         testedAt: 'desc',
@@ -486,6 +494,7 @@ export class QcService {
         files: true,
         retestAudits: true,
         labelInfo: true,
+        inspectedBy: { select: { id: true, name: true } },
       },
     });
   }
