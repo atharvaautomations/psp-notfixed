@@ -4,6 +4,8 @@ import { CreateQcSpecificationDto } from './dto/create-qc-specification.dto';
 import { UpdateQcSpecificationDto } from './dto/update-qc-specification.dto';
 import { ScanQcDto } from './dto/scan-qc.dto';
 import { CreateQcInspectionDto } from './dto/create-qc-inspection.dto';
+import { SaveQcLabelInfoDto } from './dto/save-qc-label.dto';
+import { CreateRetestAuditDto } from './dto/create-retest-audit.dto';
 import { QcStatus, QcParameterResult } from '@prisma/client';
 
 @Injectable()
@@ -211,14 +213,15 @@ export class QcService {
     if (specification.parameters.length === 0) {
       const defaultParams = [
         { name: 'Hardness', unit: 'Shore A', targetValue: specification.hardness ?? 60, displayOrder: 1, isDependentOnElongation: false },
-        { name: 'Tensile', unit: 'MPa', targetValue: specification.tensile ?? 15, displayOrder: 2, isDependentOnElongation: false },
-        { name: 'Elongation', unit: '%', targetValue: specification.elongation ?? 300, displayOrder: 3, isDependentOnElongation: false },
-        { name: 'Rheometer ML', unit: 'dN·m', testMethod: 'ASTM D5289', targetValue: 2.7, tolerance: 0.75, toleranceType: 'ABSOLUTE', displayOrder: 4, isDependentOnElongation: true },
-        { name: 'Rheometer MH', unit: 'dN·m', testMethod: 'ASTM D5289', targetValue: 17.5, tolerance: 2.5, toleranceType: 'ABSOLUTE', displayOrder: 5, isDependentOnElongation: true },
-        { name: 'Scorch Time TS2', unit: 'min', testMethod: 'ASTM D5289', targetValue: 1.5, tolerance: 0.3, toleranceType: 'ABSOLUTE', displayOrder: 6, isDependentOnElongation: true },
-        { name: 'Cure Time TC90', unit: 'min', testMethod: 'ASTM D5289', targetValue: 5.0, tolerance: 1.0, toleranceType: 'ABSOLUTE', displayOrder: 7, isDependentOnElongation: true },
-        { name: 'Specific Gravity', unit: 'g/cm³', targetValue: specification.specificGravity ?? 1.2, displayOrder: 8, isDependentOnElongation: false },
-        { name: 'Compression Set', unit: '%', targetValue: specification.compressionSet ?? 25, displayOrder: 9, isDependentOnElongation: false },
+        { name: 'Specific Gravity', unit: 'g/cm³', targetValue: specification.specificGravity ?? 1.2, displayOrder: 2, isDependentOnElongation: false },
+        { name: 'Tensile Strength', unit: 'MPa', targetValue: specification.tensile ?? 15, displayOrder: 3, isDependentOnElongation: false },
+        { name: 'Elongation at Break', unit: '%', targetValue: specification.elongation ?? 300, displayOrder: 4, isDependentOnElongation: false },
+        { name: 'Rheometer', unit: 'dN·m', testMethod: 'ASTM D5289', targetValue: undefined, tolerance: undefined, toleranceType: undefined, displayOrder: 5, isDependentOnElongation: false },
+        { name: 'Rheometer ML', unit: 'dN·m', testMethod: 'ASTM D5289', targetValue: 2.7, tolerance: 0.75, toleranceType: 'ABSOLUTE', displayOrder: 6, isDependentOnElongation: true },
+        { name: 'Rheometer MH', unit: 'dN·m', testMethod: 'ASTM D5289', targetValue: 17.5, tolerance: 2.5, toleranceType: 'ABSOLUTE', displayOrder: 7, isDependentOnElongation: true },
+        { name: 'Scorch Time TS2', unit: 'min', testMethod: 'ASTM D5289', targetValue: 1.5, tolerance: 0.3, toleranceType: 'ABSOLUTE', displayOrder: 8, isDependentOnElongation: true },
+        { name: 'Cure Time TC90', unit: 'min', testMethod: 'ASTM D5289', targetValue: 5.0, tolerance: 1.0, toleranceType: 'ABSOLUTE', displayOrder: 9, isDependentOnElongation: true },
+        { name: 'Compression Set', unit: '%', targetValue: specification.compressionSet ?? 25, displayOrder: 10, isDependentOnElongation: false },
       ];
 
       for (const p of defaultParams) {
@@ -288,7 +291,15 @@ export class QcService {
 
     // Validate each enabled parameter
     for (const param of enabledParams) {
-      if (param.actualValue === undefined || param.actualValue === null || isNaN(param.actualValue)) {
+      // Skip Rheometer parent - it's a category header, not a measurable parameter
+      if (param.specificationParameterId) {
+        const specParam = await this.prisma.qcSpecificationParameter.findUnique({
+          where: { id: param.specificationParameterId },
+        });
+        if (specParam && specParam.name === 'Rheometer') continue;
+      }
+
+      if (!param.actualValue || param.actualValue.trim() === '') {
         throw new BadRequestException(
           'All enabled parameters must have a valid actual value.'
         );
@@ -348,8 +359,10 @@ export class QcService {
             inspectedById: userId,
             parameters: {
               create: dto.parameters.map((param) => ({
-                specificationParameterId: param.specificationParameterId,
-                actualValue: param.actualValue,
+                specificationParameter: {
+                  connect: { id: param.specificationParameterId },
+                },
+                actualValue: param.actualValue as any,
                 result: param.result,
                 observations: param.observations || '',
                 isEnabled: param.isEnabled ?? true,
@@ -383,8 +396,10 @@ export class QcService {
           status: overallResult === 'PASS' ? QcStatus.PASS : QcStatus.FAIL,
           parameters: {
             create: dto.parameters.map((param) => ({
-              specificationParameterId: param.specificationParameterId,
-              actualValue: param.actualValue,
+              specificationParameter: {
+                connect: { id: param.specificationParameterId },
+              },
+              actualValue: param.actualValue as any,
               result: param.result,
               observations: param.observations || '',
               isEnabled: param.isEnabled ?? true,
@@ -440,10 +455,118 @@ export class QcService {
           },
         },
         files: true,
+        retestAudits: true,
+        labelInfo: true,
       },
       orderBy: {
         testedAt: 'desc',
       },
+    });
+  }
+
+  async findInspectionById(id: number) {
+    return this.prisma.qcInspection.findUnique({
+      where: { id },
+      include: {
+        finalBatch: {
+          include: {
+            recipe: true,
+            executionBatch: {
+              include: {
+                execution: true,
+              },
+            },
+          },
+        },
+        parameters: {
+          include: {
+            specificationParameter: true,
+          },
+        },
+        files: true,
+        retestAudits: true,
+        labelInfo: true,
+      },
+    });
+  }
+
+  async saveLabelInfo(dto: SaveQcLabelInfoDto, userId: number) {
+    const finalBatch = await this.prisma.finalBatch.findUnique({
+      where: { id: dto.finalBatchId },
+      include: { recipe: true },
+    });
+
+    if (!finalBatch) {
+      throw new BadRequestException('Final Batch not found.');
+    }
+
+    if (dto.qcInspectionId) {
+      const inspection = await this.prisma.qcInspection.findUnique({
+        where: { id: dto.qcInspectionId },
+      });
+
+      if (!inspection) {
+        throw new BadRequestException('QC Inspection not found.');
+      }
+
+      if (inspection.finalBatchId !== dto.finalBatchId) {
+        throw new BadRequestException(
+          'Inspection ID does not match the provided final batch ID.'
+        );
+      }
+    }
+
+    const batchNumber = finalBatch.qrId?.split('-').pop() ?? '';
+
+    return await this.prisma.qcLabelInfo.create({
+      data: {
+        finalBatchId: dto.finalBatchId,
+        qcInspectionId: dto.qcInspectionId ?? null,
+        customerName: dto.customerName,
+        partName: dto.partName,
+        partNumber: dto.partNumber,
+        expiryDate: new Date(dto.expiryDate),
+        compoundName: dto.compoundName,
+        batchNumber,
+        mixingDate: finalBatch.mixingCompletedAt ?? null,
+        shift: finalBatch.shift ?? null,
+        qcStatus: dto.qcStatus,
+      },
+    });
+  }
+
+  async findLabelInfo(finalBatchId: number) {
+    return this.prisma.qcLabelInfo.findFirst({
+      where: { finalBatchId },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async createRetestAudit(dto: CreateRetestAuditDto, userId: number) {
+    const inspection = await this.prisma.qcInspection.findUnique({
+      where: { id: dto.qcInspectionId },
+    });
+
+    if (!inspection) {
+      throw new BadRequestException('QC Inspection not found.');
+    }
+
+    return await this.prisma.qcRetestAudit.create({
+      data: {
+        qcInspectionId: dto.qcInspectionId,
+        stage: dto.stage,
+        deviation: dto.deviation,
+        reason: dto.reason,
+        actionTaken: dto.actionTaken,
+        approvedBy: dto.approvedBy,
+      },
+    });
+  }
+
+  async findRetestAudit(inspectionId: number) {
+    return this.prisma.qcRetestAudit.findFirst({
+      where: { qcInspectionId: inspectionId },
+      orderBy: { dateTime: 'desc' },
     });
   }
 }

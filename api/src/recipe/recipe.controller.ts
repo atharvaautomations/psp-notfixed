@@ -77,7 +77,11 @@ export class RecipeController {
   }
 
   @Delete(':id')
-  delete(@Param('id', ParseIntPipe) id: number) {
-    return this.recipeService.delete(id);
+  delete(
+    @Param('id', ParseIntPipe) id: number,
+    @Query('version') version?: string
+  ) {
+    const versionNum = version ? parseInt(version, 10) : undefined;
+    return this.recipeService.delete(id, versionNum);
   }
 }

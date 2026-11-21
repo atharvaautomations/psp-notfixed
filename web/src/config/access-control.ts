@@ -11,6 +11,7 @@ export type ModuleKey =
   | 'ingredients'
   | 'bins'
   | 'alerts'
+  | 'notifications'
   | 'recipes'
   | 'weighing'
   | 'processTracking'
@@ -72,6 +73,7 @@ export const ROLE_ACCESS: Record<UserRole, ModuleKey[]> = {
     'reports',
     'qrPreview',
     'alerts',
+    'notifications',
   ],
 
   SUPER_ADMIN: [
@@ -84,6 +86,7 @@ export const ROLE_ACCESS: Record<UserRole, ModuleKey[]> = {
     'ingredients',
     'bins',
     'alerts',
+    'notifications',
     'recipes',
     'weighing',
     'processTracking',

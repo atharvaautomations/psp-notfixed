@@ -1,9 +1,10 @@
 'use client';
+import React from 'react';
 import api from '@/lib/api';
 import { toast } from '@/components/ui/use-toast';
 
 import { useParams, useRouter } from 'next/navigation';
-import { CheckCircle2, Circle, Printer } from 'lucide-react';
+import { CheckCircle2, Circle, Printer, ChevronDown, ChevronRight } from 'lucide-react';
 
 import { Header, PageContainer } from '@/components/global';
 import { useExecutionTrackingDetail } from '@/hooks/useExecutionTrackingDetail';
@@ -164,6 +165,21 @@ function ProcessSection({ title, data }: { title: string; data: any }) {
   );
 }
 
+function batchWorkflowLabel(value: string): string {
+  switch (value) {
+    case 'KNEADER_ONLY':
+      return 'Kneader Only';
+    case 'KNEADER_AND_MIXING':
+      return 'Kneader + Mixing';
+    case 'MIXING_FINAL_BATCH':
+      return 'Mixing Final Batch';
+    case 'MIXING_MASTER_AND_FINAL_BATCH':
+      return 'Master + Final Batch';
+    default:
+      return value;
+  }
+}
+
 export default function ExecutionTrackingPage() {
   const params = useParams();
   const router = useRouter();
@@ -204,50 +220,6 @@ export default function ExecutionTrackingPage() {
     );
   }
 
-  async function reprintMasterBatch(qrId: string, batchNumber: number) {
-    try {
-      await api.post('/printer/mixing/master-batch', {
-        qrId,
-        recipeCode: execution.recipeCode,
-        batchNumber,
-      });
-
-      toast({
-        title: 'Print Successful',
-        description: `Master Batch QR ${qrId} sent for printing.`,
-      });
-    } catch (error: any) {
-      toast({
-        title: 'Print Failed',
-        description:
-          error?.response?.data?.message || 'Failed to print Master Batch QR.',
-        variant: 'destructive',
-      });
-    }
-  }
-
-  async function reprintFinalBatch(qrId: string, batchNumber: number) {
-    try {
-      await api.post('/printer/mixing/final-batch', {
-        qrId,
-        recipeCode: execution.recipeCode,
-        batchNumber,
-      });
-
-      toast({
-        title: 'Print Successful',
-        description: `Final Batch QR ${qrId} sent for printing.`,
-      });
-    } catch (error: any) {
-      toast({
-        title: 'Print Failed',
-        description:
-          error?.response?.data?.message || 'Failed to print Final Batch QR.',
-        variant: 'destructive',
-      });
-    }
-  }
-
   return (
     <PageContainer>
       <Header
@@ -282,7 +254,9 @@ export default function ExecutionTrackingPage() {
           <div>
             <p className="text-sm text-gray-500">Workflow</p>
 
-            <p className="mt-1 font-semibold">{execution.workflow}</p>
+            <p className="mt-1 font-semibold">
+              {batchWorkflowLabel(execution.workflow)}
+            </p>
           </div>
 
           <div>
@@ -315,171 +289,247 @@ export default function ExecutionTrackingPage() {
         </div>
       </Card>
 
-      {/* Batches */}
+      {/* Batches - Collapsible Sections */}
       <div className="mt-6">
         <h2 className="mb-4 text-lg font-semibold">Batches</h2>
 
-        <div className="space-y-6">
+        <div className="space-y-2">
           {execution.batches.map((batch: any) => (
-            <Card key={batch.id} className="p-6">
-              {/* Batch Header */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold">
-                    Batch {batch.batchNumber}
-                  </h3>
-
-                  <p className="text-sm text-gray-500">
-                    Current Process: {batch.currentProcess}
-                  </p>
-                </div>
-
-                <span
-                  className={`rounded-full px-3 py-1 text-xs font-medium ${statusBadge(
-                    batch.status
-                  )}`}
-                >
-                  {batch.status}
-                </span>
-              </div>
-
-              {/* Batch Overview */}
-              <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-3">
-                <div className="rounded-md bg-gray-50 p-4">
-                  <p className="text-xs text-gray-500">Current Process</p>
-
-                  <p className="mt-1 font-semibold">{batch.currentProcess}</p>
-                </div>
-
-                <div className="rounded-md bg-gray-50 p-4">
-                  <p className="text-xs text-gray-500">Batch Status</p>
-
-                  <p className="mt-1 font-semibold">{batch.status}</p>
-                </div>
-
-                <div className="rounded-md bg-gray-50 p-4">
-                  <p className="text-xs text-gray-500">Batch Progress</p>
-
-                  <p className="mt-1 font-semibold">
-                    {batch.weighing?.progress ?? 0}% weighing
-                  </p>
-                </div>
-              </div>
-
-              {/* WEIGHING */}
-              <div className="mt-6 rounded-lg border bg-white p-5">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="text-base font-semibold">Weighing</h4>
-
-                    <p className="mt-1 text-sm text-gray-500">
-                      {batch.weighing.weighedIngredients} of{' '}
-                      {batch.weighing.totalIngredients} ingredients weighed
-                    </p>
-                  </div>
-
-                  <span
-                    className={`rounded-full px-3 py-1 text-xs font-medium ${statusBadge(
-                      batch.weighing.status
-                    )}`}
-                  >
-                    {batch.weighing.status}
-                  </span>
-                </div>
-
-                <div className="mt-4">
-                  <ProgressBar value={batch.weighing.progress} />
-
-                  <p className="mt-1 text-right text-xs text-gray-500">
-                    {batch.weighing.progress}%
-                  </p>
-                </div>
-
-                <div className="mt-5 grid grid-cols-1 gap-2 md:grid-cols-2">
-                  {batch.weighing.ingredients.map((ingredient: any) => (
-                    <IngredientCheck
-                      key={ingredient.id}
-                      ingredient={ingredient}
-                      completed={ingredient.weighed}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              {/* MASTER BATCH */}
-              {batch.masterBatch && (
-                <ProcessSection title="Master Batch" data={batch.masterBatch} />
-              )}
-
-              {/* FINAL BATCH */}
-              {batch.finalBatch && (
-                <ProcessSection title="Final Batch" data={batch.finalBatch} />
-              )}
-
-              {/* QR SECTION */}
-              <div className="mt-6 border-t pt-6">
-                <h4 className="mb-4 text-base font-semibold">Batch QR Codes</h4>
-
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  {batch.masterBatch && (
-                    <div className="rounded-lg border p-4">
-                      <p className="text-xs text-gray-500">Master Batch QR</p>
-
-                      <p className="mt-2 font-medium">
-                        {batch.masterBatchQr ?? 'Not generated yet'}
-                      </p>
-
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="mt-4 gap-2"
-                        disabled={!batch.masterBatchQr}
-                        onClick={() => {
-                          if (!batch.masterBatchQr) return;
-
-                          reprintMasterBatch(
-                            batch.masterBatchQr,
-                            batch.batchNumber
-                          );
-                        }}
-                      >
-                        <Printer className="h-4 w-4" />
-                        Re-print Master Batch QR
-                      </Button>
-                    </div>
-                  )}
-
-                  <div className="rounded-lg border p-4">
-                    <p className="text-xs text-gray-500">Final Batch QR</p>
-
-                    <p className="mt-2 font-medium">
-                      {batch.finalBatchQr ?? 'Not generated yet'}
-                    </p>
-
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="mt-4 gap-2"
-                      disabled={!batch.finalBatchQr}
-                      onClick={() => {
-                        if (!batch.finalBatchQr) return;
-
-                        reprintFinalBatch(
-                          batch.finalBatchQr,
-                          batch.batchNumber
-                        );
-                      }}
-                    >
-                      <Printer className="h-4 w-4" />
-                      Re-print Final Batch QR
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </Card>
+            <BatchCard key={batch.id} batch={batch} />
           ))}
         </div>
       </div>
     </PageContainer>
+  );
+}
+
+function BatchCard({ batch }: { batch: any }) {
+  const [expanded, setExpanded] = React.useState(false);
+
+  async function reprintMasterBatch(qrId: string, batchNumber: number) {
+    try {
+      await api.post('/printer/mixing/master-batch', {
+        qrId,
+        batchNumber,
+      });
+
+      toast({
+        title: 'Print Successful',
+        description: `Master Batch QR ${qrId} sent for printing.`,
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Print Failed',
+        description:
+          error?.response?.data?.message || 'Failed to print Master Batch QR.',
+        variant: 'destructive',
+      });
+    }
+  }
+
+  async function reprintFinalBatch(qrId: string, batchNumber: number) {
+    try {
+      await api.post('/printer/mixing/final-batch', {
+        qrId,
+        batchNumber,
+      });
+
+      toast({
+        title: 'Print Successful',
+        description: `Final Batch QR ${qrId} sent for printing.`,
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Print Failed',
+        description:
+          error?.response?.data?.message || 'Failed to print Final Batch QR.',
+        variant: 'destructive',
+      });
+    }
+  }
+
+  return (
+    <Card className="border border-gray-200 bg-white shadow-sm">
+      {/* Batch Header - Always Visible */}
+      <div
+        className="p-4 flex items-center justify-between cursor-pointer"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <div className="flex items-center gap-4 flex-1">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">
+              Batch {batch.batchNumber}
+            </h3>
+
+            <p className="text-sm text-gray-500">
+              Current Process: {batch.currentProcess}
+            </p>
+          </div>
+
+          <span
+            className={`rounded-full px-3 py-1 text-xs font-medium ${statusBadge(
+              batch.status
+            )}`}
+          >
+            {batch.status}
+          </span>
+        </div>
+
+        {expanded ? (
+          <ChevronDown className="h-5 w-5 text-gray-400" />
+        ) : (
+          <ChevronRight className="h-5 w-5 text-gray-400" />
+        )}
+      </div>
+
+      {/* Collapsible Content */}
+      {expanded && (
+        <div className="border-t border-gray-100 bg-gray-50/50 p-6">
+          {/* Batch Overview */}
+          <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="rounded-md bg-gray-50 p-4">
+              <p className="text-xs text-gray-500">Current Process</p>
+
+              <p className="mt-1 font-semibold">{batch.currentProcess}</p>
+            </div>
+
+            <div className="rounded-md bg-gray-50 p-4">
+              <p className="text-xs text-gray-500">Batch Status</p>
+
+              <p className="mt-1 font-semibold">{batch.status}</p>
+            </div>
+
+            <div className="rounded-md bg-gray-50 p-4">
+              <p className="text-xs text-gray-500">Batch Progress</p>
+
+              <p className="mt-1 font-semibold">
+                {batch.weighing?.progress ?? 0}% weighing
+              </p>
+            </div>
+          </div>
+
+          {/* WEIGHING */}
+          <div className="mb-6 rounded-lg border bg-white p-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-base font-semibold">Weighing</h4>
+
+                <p className="mt-1 text-sm text-gray-500">
+                  {batch.weighing.weighedIngredients} of{' '}
+                  {batch.weighing.totalIngredients} ingredients weighed
+                </p>
+              </div>
+
+              <span
+                className={`rounded-full px-3 py-1 text-xs font-medium ${statusBadge(
+                  batch.weighing.status
+                )}`}
+              >
+                {batch.weighing.status}
+              </span>
+            </div>
+
+            <div className="mt-4">
+              <ProgressBar value={batch.weighing.progress} />
+
+              <p className="mt-1 text-right text-xs text-gray-500">
+                {batch.weighing.progress}%
+              </p>
+            </div>
+
+            <div className="mt-5 grid grid-cols-1 gap-2 md:grid-cols-2">
+              {batch.weighing.ingredients.map((ingredient: any) => (
+                <IngredientCheck
+                  key={ingredient.id}
+                  ingredient={ingredient}
+                  completed={ingredient.weighed}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* MASTER BATCH */}
+          {batch.masterBatch && (
+            <div className="mb-6">
+              <ProcessSection title="Master Batch" data={batch.masterBatch} />
+            </div>
+          )}
+
+          {/* FINAL BATCH */}
+          {batch.finalBatch && (
+            <div className="mb-6">
+              <ProcessSection title="Final Batch" data={batch.finalBatch} />
+            </div>
+          )}
+
+          {/* QR SECTION */}
+          <div className="border-t pt-6">
+            <h4 className="mb-4 text-base font-semibold">
+              Batch QR Codes
+            </h4>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              {batch.masterBatch && (
+                <div className="rounded-lg border p-4">
+                  <p className="text-xs text-gray-500">
+                    Master Batch QR
+                  </p>
+
+                  <p className="mt-2 font-medium">
+                    {batch.masterBatchQr ?? 'Not generated yet'}
+                  </p>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-4 gap-2"
+                    disabled={!batch.masterBatchQr}
+                    onClick={() => {
+                      if (!batch.masterBatchQr) return;
+
+                      reprintMasterBatch(
+                        batch.masterBatchQr,
+                        batch.batchNumber
+                      );
+                    }}
+                  >
+                    <Printer className="h-4 w-4" />
+                    Re-print Master Batch QR
+                  </Button>
+                </div>
+              )}
+
+              <div className="rounded-lg border p-4">
+                <p className="text-xs text-gray-500">
+                  Final Batch QR
+                </p>
+
+                <p className="mt-2 font-medium">
+                  {batch.finalBatchQr ?? 'Not generated yet'}
+                </p>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-4 gap-2"
+                  disabled={!batch.finalBatchQr}
+                  onClick={() => {
+                    if (!batch.finalBatchQr) return;
+
+                    reprintFinalBatch(
+                      batch.finalBatchQr,
+                      batch.batchNumber
+                    );
+                  }}
+                >
+                  <Printer className="h-4 w-4" />
+                  Re-print Final Batch QR
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </Card>
   );
 }

@@ -17,6 +17,7 @@ import { toast } from '@/components/ui/use-toast';
 import { Pencil, Trash2 } from 'lucide-react';
 import RecipeDetailsModal, { RecipeDetails } from './RecipeDetailsModal';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { Checkbox } from '@/components/ui/checkbox';
 
 function VersionSelect({
   recipe,
@@ -81,6 +82,10 @@ export default function RecipeTable() {
   const [pendingDelete, setPendingDelete] = useState<RecipeDetails | null>(
     null
   );
+  // 'all' = delete all versions, number = delete specific version id, null = not set
+  const [deleteTarget, setDeleteTarget] = useState<'all' | number | null>(
+    null
+  );
 
   const { data: recipes = [], isLoading } = useQuery<RecipeDetails[]>({
     queryKey: ['recipes'],
@@ -90,8 +95,28 @@ export default function RecipeTable() {
     },
   });
 
+  // Fetch versions for the recipe pending delete
+  const { data: versions = [] } = useQuery<RecipeDetails[]>({
+    queryKey: ['recipe-delete-versions', pendingDelete?.recipeCode],
+    queryFn: async () => {
+      if (!pendingDelete?.recipeCode) return [];
+      const res = await api.get(
+        `/recipes/${encodeURIComponent(pendingDelete.recipeCode)}/versions`
+      );
+      return Array.isArray(res.data) ? res.data : [];
+    },
+    enabled: Boolean(pendingDelete?.recipeCode),
+    staleTime: 30_000,
+  });
+
   const deleteRecipe = useMutation({
-    mutationFn: (id: number) => api.delete(`/recipes/${id}`),
+    mutationFn: async ({ id, version }: { id: number; version?: number }) => {
+      const params = new URLSearchParams();
+      if (version) params.set('version', String(version));
+      const queryString = params.toString();
+      const url = `/recipes/${id}${queryString ? '?' + queryString : ''}`;
+      return api.delete(url);
+    },
 
     onSuccess: () => {
       toast({
@@ -102,7 +127,9 @@ export default function RecipeTable() {
 
       qc.invalidateQueries({ queryKey: ['recipes'] });
       qc.invalidateQueries({ queryKey: ['recipe-recycle-bin'] });
+      qc.invalidateQueries({ queryKey: ['recipe-delete-versions'] });
       setPendingDelete(null);
+      setDeleteTarget(null);
     },
 
     onError: (err: any) => {
@@ -112,11 +139,14 @@ export default function RecipeTable() {
         variant: 'destructive',
       });
       setPendingDelete(null);
+      setDeleteTarget(null);
     },
   });
 
   const handleDelete = (recipe: RecipeDetails) => {
     setPendingDelete(recipe);
+    // Default to deleting the clicked version
+    setDeleteTarget(recipe.id);
   };
 
   if (isLoading) {
@@ -126,6 +156,8 @@ export default function RecipeTable() {
   if (!recipes.length) {
     return <div className="p-6 text-gray-600">No recipes found.</div>;
   }
+
+  const hasMultipleVersions = versions.length > 1;
 
   return (
     <>
@@ -205,19 +237,79 @@ export default function RecipeTable() {
         title="Move recipe to recycle bin?"
         description={
           pendingDelete
-            ? `Recipe ${pendingDelete.recipeCode} (v${pendingDelete.version}) can be restored from the Recycle Bin later.`
+            ? `Recipe ${pendingDelete.recipeCode}${
+                hasMultipleVersions
+                  ? ` — select the version to delete below, or choose "Delete All Versions"`
+                  : ` (v${pendingDelete.version})`
+              } can be restored from the Recycle Bin later.`
             : undefined
         }
         confirmLabel="Move to Recycle Bin"
         destructive
         busy={deleteRecipe.isPending}
         onConfirm={() => {
-          if (pendingDelete) deleteRecipe.mutate(pendingDelete.id);
+          if (!pendingDelete) return;
+
+          if (deleteTarget === 'all') {
+            // Delete all versions — no version param
+            deleteRecipe.mutate({ id: pendingDelete.id });
+          } else if (typeof deleteTarget === 'number') {
+            // Delete specific version — find its version number
+            const versionToDelete = versions.find((v) => v.id === deleteTarget);
+            deleteRecipe.mutate({
+              id: deleteTarget,
+              version: versionToDelete?.version,
+            });
+          } else {
+            // Fallback: delete the pending delete record
+            deleteRecipe.mutate({ id: pendingDelete.id });
+          }
         }}
         onOpenChange={(open) => {
-          if (!open) setPendingDelete(null);
+          if (!open) {
+            setPendingDelete(null);
+            setDeleteTarget(null);
+          }
         }}
-      />
+      >
+        {hasMultipleVersions && (
+          <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <div className="flex items-start gap-3 mb-3">
+              <Checkbox
+                checked={deleteTarget === 'all'}
+                onCheckedChange={(checked) =>
+                  setDeleteTarget(checked ? 'all' : pendingDelete?.id ?? null)
+                }
+              />
+              <label className="text-sm font-medium cursor-pointer">
+                Delete All Versions
+              </label>
+            </div>
+
+            {deleteTarget !== 'all' && versions.length > 0 && (
+              <div className="mb-3">
+                <label className="text-xs font-medium text-gray-500 block mb-1">
+                  Select Version to Delete
+                </label>
+                <select
+                  className="h-9 w-full rounded-md border border-gray-300 bg-white px-2 text-sm"
+                  value={deleteTarget ?? pendingDelete?.id}
+                  onChange={(e) => {
+                    const id = Number(e.target.value);
+                    setDeleteTarget(id);
+                  }}
+                >
+                  {versions.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      v{v.version}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+        )}
+      </ConfirmDialog>
     </>
   );
 }

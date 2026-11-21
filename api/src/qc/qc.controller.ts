@@ -24,6 +24,8 @@ import { CreateQcSpecificationDto } from './dto/create-qc-specification.dto';
 import { UpdateQcSpecificationDto } from './dto/update-qc-specification.dto';
 import { ScanQcDto } from './dto/scan-qc.dto';
 import { CreateQcInspectionDto } from './dto/create-qc-inspection.dto';
+import { SaveQcLabelInfoDto } from './dto/save-qc-label.dto';
+import { CreateRetestAuditDto } from './dto/create-retest-audit.dto';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
@@ -74,12 +76,43 @@ export class QcController {
     return this.qcService.findAllInspections();
   }
 
+  @Get('inspection/:id')
+  findInspectionById(@Param('id', ParseIntPipe) id: number) {
+    return this.qcService.findInspectionById(id);
+  }
+
   @Post('inspection')
   createInspection(
     @Body() dto: CreateQcInspectionDto,
     @CurrentUser() user: any
   ) {
     return this.qcService.createInspection(dto, user.id);
+  }
+
+  @Post('label-info')
+  saveLabelInfo(
+    @Body() dto: SaveQcLabelInfoDto,
+    @CurrentUser() user: any
+  ) {
+    return this.qcService.saveLabelInfo(dto, user.id);
+  }
+
+  @Get('label-info/:finalBatchId')
+  getLabelInfo(@Param('finalBatchId', ParseIntPipe) finalBatchId: number) {
+    return this.qcService.findLabelInfo(finalBatchId);
+  }
+
+  @Post('retest-audit')
+  createRetestAudit(
+    @Body() dto: CreateRetestAuditDto,
+    @CurrentUser() user: any
+  ) {
+    return this.qcService.createRetestAudit(dto, user.id);
+  }
+
+  @Get('retest-audit/:inspectionId')
+  getRetestAudit(@Param('inspectionId', ParseIntPipe) inspectionId: number) {
+    return this.qcService.findRetestAudit(inspectionId);
   }
 
   @Post('upload')

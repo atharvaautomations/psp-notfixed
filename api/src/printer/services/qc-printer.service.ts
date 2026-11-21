@@ -19,6 +19,18 @@ export class QcPrinterService {
       },
       select: {
         id: true,
+        mixingCompletedAt: true,
+        shift: true,
+        expiryDate: true,
+        executionBatch: {
+          select: {
+            execution: {
+              select: {
+                productionBatchNumber: true,
+              },
+            },
+          },
+        },
       },
     });
 
@@ -44,13 +56,37 @@ export class QcPrinterService {
       );
     }
 
+    // Fetch label info if available
+    const labelInfo = await this.prisma.qcLabelInfo.findFirst({
+      where: { finalBatchId: finalBatch.id },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    const completedAt = finalBatch.mixingCompletedAt ?? qcInspection.testedAt;
+
     const tspl = buildQcLabel({
       ...data,
-      completedAt: qcInspection.testedAt,
+      completedAt,
+      batchNumber: finalBatch.executionBatch?.execution?.productionBatchNumber ?? String(data.batchNumber ?? ''),
+      mixingDate: finalBatch.mixingCompletedAt ? formatDate(finalBatch.mixingCompletedAt) : undefined,
+      shift: finalBatch.shift ?? undefined,
+      expiryDate: labelInfo?.expiryDate ? formatDate(labelInfo.expiryDate) : data.expiryDate,
+      customerName: labelInfo?.customerName ?? data.customerName,
+      partName: labelInfo?.partName ?? data.partName,
+      partNumber: labelInfo?.partNumber ?? data.partNumber,
+      compoundName: labelInfo?.compoundName ?? data.compoundName,
     });
 
     const printer = PRINTERS.qc;
 
     await this.tscPrinterClient.send(printer.ip, printer.port, tspl);
   }
+}
+
+function formatDate(value: Date): string {
+  const date = new Date(value);
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
 }

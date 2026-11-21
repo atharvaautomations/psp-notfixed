@@ -25,8 +25,13 @@ export class PrinterController {
     body: {
       qrId: string;
       recipeCode: string;
-      batchNumber: number;
+      batchNumber: string;
       qcResult: 'PASS' | 'FAIL';
+      customerName?: string;
+      partName?: string;
+      partNumber?: string;
+      expiryDate?: string;
+      compoundName?: string;
     }
   ) {
     await this.qcPrinterService.printQcLabel(body);

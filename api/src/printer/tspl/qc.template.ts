@@ -1,11 +1,20 @@
-import { MixingLabelData } from '../types/mixing-label-data';
-
-export interface QcLabelData extends Omit<MixingLabelData, 'labelType'> {
+export interface QcLabelData {
+  qrId: string;
+  recipeCode: string;
+  batchNumber: string;
   qcResult: 'PASS' | 'FAIL';
+  customerName?: string;
+  partName?: string;
+  partNumber?: string;
+  expiryDate?: string;
+  compoundName?: string;
+  mixingDate?: string;
+  shift?: string;
+  completedAt: Date | string;
 }
 
 export function buildQcLabel(data: QcLabelData): string {
-  const title = 'FINAL BATCH';
+  const title = 'QC INSPECTION';
 
   function formatDate(value: Date | string): string {
     const date = new Date(value);
@@ -32,26 +41,76 @@ export function buildQcLabel(data: QcLabelData): string {
     `QRCODE 70,120,M,8,A,0,M2,"${escapeTsplText(data.qrId)}"`,
 
     `TEXT 90,300,"0",0,9,9,"${escapeTsplText(data.qrId)}"`,
-
-    'BAR 300,70,5,300',
-
-    `TEXT 330,80,"0",0,9,9,"RECIPE : ${escapeTsplText(data.recipeCode)}"`,
-
-    `TEXT 330,130,"0",0,9,9,"BATCH NO : ${escapeTsplText(
-      String(data.batchNumber)
-    )}"`,
-
-    `TEXT 330,180,"0",0,9,9,"LABEL TYPE : ${escapeTsplText(title)}"`,
-
-    `TEXT 330,230,"0",0,9,9,"QC RESULT : ${escapeTsplText(data.qcResult)}"`,
-
-    `TEXT 330,280,"0",0,9,9,"DATE : ${formatDate(data.completedAt)}"`,
-
-    `TEXT 700,340,"0",0,7,6,"${getJulianDate(new Date())}"`,
-
-    'PRINT 1,1',
-    '',
   ];
+
+  // Recipe
+  lines.push(
+    `TEXT 330,80,"0",0,9,9,"RECIPE : ${escapeTsplText(data.recipeCode)}"`
+  );
+
+  // Batch Number
+  lines.push(
+    `TEXT 330,110,"0",0,9,9,"BATCH NO : ${escapeTsplText(
+      String(data.batchNumber ?? data.qrId)
+    )}"`
+  );
+
+  // Customer Name
+  lines.push(
+    `TEXT 330,140,"0",0,9,9,"CUSTOMER : ${escapeTsplText(
+      data.customerName ?? ''
+    )}"`
+  );
+
+  // Part Name
+  lines.push(
+    `TEXT 330,170,"0",0,9,9,"PART NAME : ${escapeTsplText(
+      data.partName ?? ''
+    )}"`
+  );
+
+  // Part Number
+  lines.push(
+    `TEXT 330,200,"0",0,9,9,"PART NO : ${escapeTsplText(data.partNumber ?? '')}"`
+  );
+
+  // Compound Name
+  lines.push(
+    `TEXT 330,230,"0",0,9,9,"COMPOUND : ${escapeTsplText(
+      data.compoundName ?? ''
+    )}"`
+  );
+
+  // Mixing Date / Shift
+  const mixingInfo = `${data.mixingDate ?? ''}${
+    data.shift ? ` / ${data.shift}` : ''
+  }`;
+  lines.push(
+    `TEXT 330,260,"0",0,9,9,"MIXING : ${escapeTsplText(mixingInfo)}"`
+  );
+
+  // Expiry Date
+  lines.push(
+    `TEXT 330,290,"0",0,9,9,"EXPIRY : ${escapeTsplText(data.expiryDate ?? '')}"`
+  );
+
+  // QC Result
+  lines.push(
+    `TEXT 330,320,"0",0,10,10,"QC RESULT : ${escapeTsplText(data.qcResult)}"`
+  );
+
+  // Date
+  lines.push(
+    `TEXT 330,350,"0",0,9,9,"DATE : ${formatDate(data.completedAt)}"`
+  );
+
+  // Julian date at bottom right
+  lines.push(
+    `TEXT 700,340,"0",0,7,6,"${getJulianDate(new Date())}"`
+  );
+
+  lines.push('PRINT 1,1');
+  lines.push('');
 
   return lines.join('\r\n');
 }

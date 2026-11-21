@@ -19,6 +19,7 @@ interface ConfirmDialogProps {
   busy?: boolean;
   onConfirm: () => void;
   onOpenChange: (open: boolean) => void;
+  children?: React.ReactNode;
 }
 
 export function ConfirmDialog({
@@ -30,6 +31,7 @@ export function ConfirmDialog({
   busy,
   onConfirm,
   onOpenChange,
+  children,
 }: Readonly<ConfirmDialogProps>) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -40,6 +42,8 @@ export function ConfirmDialog({
             <DialogDescription>{description}</DialogDescription>
           ) : null}
         </DialogHeader>
+
+        {children && <div className="mb-4">{children}</div>}
 
         <DialogFooter>
           <Button

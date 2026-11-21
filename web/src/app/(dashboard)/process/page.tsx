@@ -6,6 +6,21 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useRouter } from 'next/navigation';
 
+function batchWorkflowLabel(value: string): string {
+  switch (value) {
+    case 'KNEADER_ONLY':
+      return 'Kneader Only';
+    case 'KNEADER_AND_MIXING':
+      return 'Kneader + Mixing';
+    case 'MIXING_FINAL_BATCH':
+      return 'Mixing Final Batch';
+    case 'MIXING_MASTER_AND_FINAL_BATCH':
+      return 'Master + Final Batch';
+    default:
+      return value;
+  }
+}
+
 export default function ProcessTrackingPage() {
   const router = useRouter();
 
@@ -105,9 +120,9 @@ export default function ProcessTrackingPage() {
                     </td>
 
                     <td className="px-6 py-4">
-                      {execution.workflow === 'MIXING_MASTER_AND_FINAL_BATCH'
-                        ? 'Master Batch + Final Batch'
-                        : execution.workflow}
+                      <span className="text-xs font-medium">
+                        {batchWorkflowLabel(execution.workflow)}
+                      </span>
                     </td>
 
                     <td className="px-6 py-4 text-center">

@@ -504,6 +504,7 @@ model FinalBatch {
   expiryDate DateTime?
 
   qcInspections QcInspection[]
+  labelInfo     QcLabelInfo[]
 
   @@index([recipeId])
 }
@@ -560,6 +561,8 @@ model QcInspection {
 
   parameters QcInspectionParameter[]
   files QcInspectionFile[]
+  retestAudits QcRetestAudit[]
+  labelInfo QcLabelInfo[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -606,7 +609,7 @@ model QcInspectionParameter {
   specificationParameter   QcSpecificationParameter @relation(fields: [specificationParameterId], references: [id])
 
   targetValue Float?
-  actualValue Float?
+  actualValue String?
   unit String?
   testMethod String?
 
@@ -647,6 +650,82 @@ model QcInspectionFile {
   @@index([uploadedById])
 }
 
+model QcLabelInfo {
+  id Int @id @default(autoincrement())
+
+  finalBatchId Int
+  finalBatch   FinalBatch @relation(fields: [finalBatchId], references: [id], onDelete: Cascade)
+
+  qcInspectionId Int?
+  qcInspection   QcInspection? @relation(fields: [qcInspectionId], references: [id])
+
+  customerName String
+  partName String
+  partNumber String
+  expiryDate DateTime
+  compoundName String
+
+  batchNumber String
+  mixingDate DateTime?
+  shift String?
+
+  qcStatus String // PASS or FAIL
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([finalBatchId])
+  @@index([qcInspectionId])
+}
+
+model QcRetestAudit {
+  id Int @id @default(autoincrement())
+
+  qcInspectionId Int
+  qcInspection   QcInspection @relation(fields: [qcInspectionId], references: [id], onDelete: Cascade)
+
+  dateTime DateTime @default(now())
+  stage String
+  deviation String
+  reason String
+  actionTaken String
+  approvedBy String
+
+  createdAt DateTime @default(now())
+
+  @@index([qcInspectionId])
+}
+
+enum NotificationType {
+  QC_INSPECTION_COMPLETED
+  QC_INSPECTION_FAILED
+  QC_RETEST_COMPLETED
+  PRODUCTION_EXECUTION_COMPLETED
+  SYSTEM_ALERT
+  INFO
+}
+
+model Notification {
+  id Int @id @default(autoincrement())
+
+  title String
+  message String
+  type NotificationType
+
+  userId Int?
+  user   User? @relation(fields: [userId], references: [id])
+
+  isRead Boolean @default(false)
+  readAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([isRead])
+  @@index([type])
+  @@index([createdAt])
+}
+
 model User {
   id Int @id @default(autoincrement())
 
@@ -668,6 +747,7 @@ model User {
 
   inspectedQc QcInspection[] @relation("QcInspectionInspectedBy")
   uploadedQcFiles QcInspectionFile[]
+  notifications Notification[]
 
   @@index([role])
   @@index([isActive])

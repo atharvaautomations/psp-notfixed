@@ -519,7 +519,7 @@ export default function RecipeAddPage() {
               />
             </div>
             <div>
-              <Label>Recipe Name (optional)</Label>
+              <Label>Recipe Name</Label>
               <Input
                 placeholder="e.g., Steering Rack Compound"
                 value={draft.name}

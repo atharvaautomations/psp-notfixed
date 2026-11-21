@@ -306,7 +306,7 @@ export class RecipeService {
   // --------------------------------------------------
   // SOFT DELETE - move to recycle bin
   // --------------------------------------------------
-  async softDelete(id: number) {
+  async softDelete(id: number, version?: number) {
     const recipe = await this.prisma.recipe.findUnique({
       where: { id },
     });
@@ -321,18 +321,20 @@ export class RecipeService {
       );
     }
 
-    const executionCount = await this.prisma.execution.count({
-      where: { recipeId: id },
-    });
-
-    if (executionCount > 0) {
-      throw new BadRequestException(
-        `Cannot delete recipe ${recipe.recipeCode}. This recipe has already been used in an execution.`
-      );
+    // If a specific version is requested, delete only that version
+    if (version !== undefined) {
+      return this.prisma.recipe.update({
+        where: { id },
+        data: { deletedAt: new Date() },
+      });
     }
 
-    return this.prisma.recipe.update({
-      where: { id },
+    // Otherwise soft delete ALL versions of this recipe (same recipeCode)
+    return this.prisma.recipe.updateMany({
+      where: {
+        recipeCode: recipe.recipeCode,
+        deletedAt: null,
+      },
       data: { deletedAt: new Date() },
     });
   }
@@ -413,7 +415,7 @@ export class RecipeService {
   // --------------------------------------------------
   // DELETE (legacy) - now soft deletes
   // --------------------------------------------------
-  async delete(id: number) {
-    return this.softDelete(id);
+  async delete(id: number, version?: number) {
+    return this.softDelete(id, version);
   }
 }

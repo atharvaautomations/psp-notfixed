@@ -7,8 +7,8 @@ export class QcInspectionParameterInputDto {
   specificationParameterId!: number;
 
   @IsOptional()
-  @IsNumber()
-  actualValue?: number;
+  @IsString()
+  actualValue?: string;
 
   @IsOptional()
   @IsEnum(QcParameterResult)
@@ -21,6 +21,18 @@ export class QcInspectionParameterInputDto {
   @IsOptional()
   @IsBoolean()
   isEnabled?: boolean;
+
+  @IsOptional()
+  @IsString()
+  testMethod?: string;
+
+  @IsOptional()
+  @IsString()
+  unit?: string;
+
+  @IsOptional()
+  @IsString()
+  specification?: string;
 }
 
 export class CreateQcInspectionDto {

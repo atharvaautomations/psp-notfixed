@@ -50,6 +50,9 @@ export interface ScanQcResponse {
   };
   batch?: {
     batchNumber?: number;
+    execution?: {
+      executionCode?: string;
+    };
     [key: string]: unknown;
   };
   specification: {
@@ -64,10 +67,13 @@ export interface ScanQcResponse {
 
 export interface QcInspectionParameterInputDto {
   specificationParameterId: number;
-  actualValue?: number;
+  actualValue?: string;
   result?: 'PASS' | 'FAIL' | 'RETEST';
   observations?: string;
   isEnabled?: boolean;
+  testMethod?: string;
+  unit?: string;
+  specification?: string;
 }
 
 export interface InspectionPayload {
@@ -115,6 +121,8 @@ export interface QcInspectionHistoryItem {
   testedAt?: string;
   parameters?: QcInspectionParameter[];
   files?: QcInspectionFile[];
+  retestAudits?: any[];
+  labelInfo?: any;
   finalBatch: {
     id?: number;
     qrId: string;
@@ -141,6 +149,26 @@ export interface QcInspectionHistoryItem {
     testedAt?: string;
     createdAt?: string;
   };
+}
+
+export interface SaveLabelInfoDto {
+  finalBatchId: number;
+  qcInspectionId?: number;
+  customerName: string;
+  partName: string;
+  partNumber: string;
+  expiryDate: string;
+  compoundName: string;
+  qcStatus: string;
+}
+
+export interface CreateRetestAuditDto {
+  qcInspectionId: number;
+  stage: string;
+  deviation: string;
+  reason: string;
+  actionTaken: string;
+  approvedBy: string;
 }
 
 export interface QcInspectionDetail {
@@ -176,6 +204,7 @@ export interface QcInspectionDetail {
     testedAt: string;
     createdAt: string;
   };
+  parameters: QcInspectionParameter[];
 }
 
 export interface ScanQcResponse {
@@ -188,6 +217,9 @@ export interface ScanQcResponse {
   };
   batch?: {
     batchNumber?: number;
+    execution?: {
+      executionCode?: string;
+    };
     [key: string]: unknown;
   };
   specification: {
@@ -248,6 +280,23 @@ export const qcApi = {
     qrId: string;
     recipeCode: string;
     batchNumber: number;
-    qcResult: 'PASS' | 'FAIL' | 'RETEST';
+    qcResult: 'PASS' | 'FAIL';
+    customerName?: string;
+    partName?: string;
+    partNumber?: string;
+    expiryDate?: string;
+    compoundName?: string;
   }) => api.post('/printer/qc/print', data),
+
+  saveLabelInfo: (data: SaveLabelInfoDto) =>
+    api.post('/qc/label-info', data),
+
+  getLabelInfo: (finalBatchId: number) =>
+    api.get(`/qc/label-info/${finalBatchId}`),
+
+  createRetestAudit: (data: CreateRetestAuditDto) =>
+    api.post('/qc/retest-audit', data),
+
+  getRetestAudit: (inspectionId: number) =>
+    api.get(`/qc/retest-audit/${inspectionId}`),
 };

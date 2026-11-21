@@ -107,6 +107,12 @@ const menu: {
     module: 'qc',
   },
   {
+    label: 'Notifications',
+    href: '/notifications',
+    icon: Bell,
+    module: 'notifications',
+  },
+  {
     label: 'Reports',
     href: '/reports',
     icon: FileText,
