@@ -93,7 +93,7 @@ export default function QcInspectionWorkspace() {
     // - Initial inspection PASS
     // - Retest PASS or FAIL
     // Not for initial inspection FAIL
-    const shouldShowLabelInfo = !isSavingRetestRef.current && (isRetest || res.inspection?.overallResult === 'PASS' || res.inspection?.status === 'PASS');
+    const shouldShowLabelInfo = !isSavingRetestRef.current && (isRetest || res.inspection?.overallResult === 'PASS');
 
     if (isSavingRetestRef.current) {
       isSavingRetestRef.current = false;
