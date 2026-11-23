@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Inward } from '@/types/inward';
+import { StatusBadge } from '@/components/ui/status-badge';
 
 interface InwardDetailsModalProps {
   open: boolean;
@@ -28,6 +29,8 @@ export default function InwardDetailsModal({
   const createdAtDisplay = new Date(
     item.createdAt ?? item.mfgDate
   ).toLocaleDateString();
+
+  const isExpired = item.isExpired || item.status === 'Expired';
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -121,22 +124,27 @@ export default function InwardDetailsModal({
           <div>{new Date(item.mfgDate).toLocaleDateString()}</div>
 
           <div className="font-medium text-gray-600">Expiry Date</div>
-          <div>{new Date(item.expDate).toLocaleDateString()}</div>
+          <div>
+            {new Date(item.expDate).toLocaleDateString()}
+          </div>
 
           <div className="font-medium text-gray-600">Entry Date</div>
           <div>{createdAtDisplay}</div>
 
           <div className="font-medium text-gray-600">Status</div>
           <div>
-            <span
-              className={`px-2 py-1 text-xs rounded-full ${
-                item.status === 'Active'
-                  ? 'bg-green-100 text-green-700'
-                  : 'bg-red-100 text-red-700'
-              }`}
-            >
-              {item.status}
-            </span>
+            <StatusBadge status={isExpired ? 'Expired' : 'Active'} />
+          </div>
+
+          <div className="font-medium text-gray-600">QR Codes</div>
+          <div>
+            {item.qrCodes && item.qrCodes.length > 0 ? (
+              <span className="text-green-700 font-medium">
+                {item.qrCodes.length} generated
+              </span>
+            ) : (
+              <span className="text-gray-500">Not generated</span>
+            )}
           </div>
         </div>
 

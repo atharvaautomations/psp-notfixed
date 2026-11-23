@@ -106,6 +106,8 @@ export function useApproveRequisition() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: REQUISITION_QUERY_KEYS.all });
+      qc.invalidateQueries({ queryKey: ['outward'] });
+      qc.invalidateQueries({ queryKey: ['materialStock'] });
       notifyGlobal({ type: 'success', message: 'Requisition approved' });
     },
     onError: () => {

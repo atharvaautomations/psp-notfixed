@@ -604,6 +604,15 @@ export default function InwardPage() {
                   ),
                 },
                 {
+                  key: 'grnNumber',
+                  header: 'GRN No.',
+                  render: (r) => (
+                    <span className="text-gray-600 text-xs">
+                      {r.grnNumber || '-'}
+                    </span>
+                  ),
+                },
+                {
                   key: 'quantity',
                   header: 'Quantity',
                   render: (r) => (
@@ -663,6 +672,21 @@ export default function InwardPage() {
                   header: 'Status',
                   render: (r) => (
                     <StatusBadge status={r.isExpired ? 'Expired' : 'Active'} />
+                  ),
+                },
+                {
+                  key: 'qrStatus',
+                  header: 'QR Status',
+                  render: (r) => (
+                    <span className="text-xs font-medium rounded-full px-2 py-1 ${
+                      r.qrCodes && r.qrCodes.length > 0
+                        ? 'bg-green-100 text-green-700'
+                        : 'bg-red-100 text-red-700'
+                    }">
+                      {r.qrCodes && r.qrCodes.length > 0
+                        ? `QR (${r.qrCodes.length})`
+                        : 'No QR'}
+                    </span>
                   ),
                 },
                 {

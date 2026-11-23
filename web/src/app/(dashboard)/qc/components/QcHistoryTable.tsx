@@ -44,7 +44,8 @@ function statusBadge(status?: string) {
 export default function QcHistoryTable({ className = '', onRetest }: Props) {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
-  const itemsPerPage = 10;
+  const [pageSize, setPageSize] = useState(10);
+  const pageSizeOptions = [10, 25, 50];
   const [selectedInspection, setSelectedInspection] = useState<QcInspectionHistoryItem | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -90,10 +91,10 @@ export default function QcHistoryTable({ className = '', onRetest }: Props) {
     );
   }
 
-  const totalPages = Math.ceil(inspections.length / itemsPerPage);
+  const totalPages = Math.ceil(inspections.length / pageSize);
   const visibleData = inspections.slice(
-    (page - 1) * itemsPerPage,
-    page * itemsPerPage
+    (page - 1) * pageSize,
+    page * pageSize
   );
 
   return (
@@ -206,33 +207,65 @@ export default function QcHistoryTable({ className = '', onRetest }: Props) {
       </div>
 
       {totalPages > 1 && (
-        <div className="mt-4 flex justify-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page === 1}
-            onClick={() => setPage(page - 1)}
-          >
-            Previous
-          </Button>
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-            <Button
-              key={p}
-              size="sm"
-              variant={page === p ? 'default' : 'outline'}
-              onClick={() => setPage(p)}
+        <div className="mt-4 flex items-center justify-between gap-2">
+          <div className="text-sm text-gray-600">
+            Showing{' '}
+            <span className="font-medium">
+              {(page - 1) * pageSize + 1}
+            </span>{' '}
+            to{' '}
+            <span className="font-medium">
+              {Math.min(page * pageSize, inspections.length)}
+            </span>{' '}
+            of <span className="font-medium">{inspections.length}</span> records
+          </div>
+
+          <div className="flex items-center gap-1">
+            <label className="text-sm text-gray-600">Records per page:</label>
+            <select
+              className="border border-gray-300 rounded px-3 py-2 text-sm bg-white"
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+              }}
             >
-              {p}
+              {pageSizeOptions.map((size) => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page === 1}
+              onClick={() => setPage(page - 1)}
+            >
+              Previous
             </Button>
-          ))}
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page === totalPages}
-            onClick={() => setPage(page + 1)}
-          >
-            Next
-          </Button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+              <Button
+                key={p}
+                size="sm"
+                variant={page === p ? 'default' : 'outline'}
+                onClick={() => setPage(p)}
+              >
+                {p}
+              </Button>
+            ))}
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page === totalPages || totalPages === 0}
+              onClick={() => setPage(page + 1)}
+            >
+              Next
+            </Button>
+          </div>
         </div>
       )}
 
