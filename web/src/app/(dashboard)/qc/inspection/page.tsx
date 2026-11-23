@@ -34,6 +34,8 @@ export default function QcInspectionWorkspace() {
   const [labelInfo, setLabelInfo] = useState<SaveLabelInfoDto | null>(null);
   const [retestAuditData, setRetestAuditData] = useState<RetestAuditData | null>(null);
   const [retestAuditComplete, setRetestAuditComplete] = useState(false);
+  const [pendingRetestData, setPendingRetestData] = useState<{ parameters: QcInspectionParameterInputDto[]; filesMap: Record<number, File> } | null>(null);
+  const isSavingRetestRef = useRef(false);
   const [loading, setLoading] = useState(false);
 
   // Track initialization to prevent re-initialization loops
@@ -87,7 +89,19 @@ export default function QcInspectionWorkspace() {
       }
     }
 
-    if (res.inspection?.overallResult === 'PASS' || res.inspection?.status === 'PASS') {
+    // Show QC Label Information dialog only for:
+    // - Initial inspection PASS
+    // - Retest PASS or FAIL
+    // Not for initial inspection FAIL
+    const shouldShowLabelInfo = !isSavingRetestRef.current && (isRetest || res.inspection?.overallResult === 'PASS' || res.inspection?.status === 'PASS');
+
+    if (isSavingRetestRef.current) {
+      isSavingRetestRef.current = false;
+      router.push('/qc');
+      return;
+    }
+
+    if (shouldShowLabelInfo) {
       setLabelInfo({
         finalBatchId: batch?.finalBatchId!,
         qcInspectionId: res.inspection?.id,
@@ -96,11 +110,13 @@ export default function QcInspectionWorkspace() {
         partNumber: '',
         expiryDate: '',
         compoundName: '',
-        qcStatus: 'PASS',
+        qcStatus: res.inspection?.overallResult || res.inspection?.status || 'PASS',
       });
       setLabelInfoDialog(true);
+    } else {
+      router.push('/qc');
     }
-  }, [queryClient, isRetest, retestAuditData, batch, qcApi]);
+  }, [queryClient, isRetest, retestAuditData, batch, qcApi, router]);
 
   const handleSaveError = useCallback((err: { response?: { data?: { message?: string } } }) => {
     toast({
@@ -121,11 +137,41 @@ export default function QcInspectionWorkspace() {
   const createInspectionRef = useRef(createInspection);
   createInspectionRef.current = createInspection;
 
-  const handleLabelInfoSuccess = useCallback(() => {
+  const handleLabelInfoSuccess = useCallback(async () => {
     toast({ title: 'QC Label Information saved successfully' });
     setLabelInfoDialog(false);
     setLabelInfo(null);
-  }, []);
+
+    if (pendingRetestData) {
+      isSavingRetestRef.current = true;
+      const { parameters, filesMap } = pendingRetestData;
+      setPendingRetestData(null);
+
+      // Upload files first, then save inspection
+      const fileUploadPromises = Object.entries(filesMap).map(
+        async ([paramIdStr, file]) => {
+          const paramId = Number(paramIdStr);
+          try {
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('parameterId', String(paramId));
+            formData.append('finalBatchId', String(batch?.finalBatchId));
+            await qcApi.uploadFile(formData);
+          } catch (uploadErr) {
+            console.warn(`File upload for parameter ${paramId} skipped:`, uploadErr);
+          }
+        }
+      );
+
+      if (fileUploadPromises.length > 0) {
+        await Promise.allSettled(fileUploadPromises);
+      }
+
+      createInspectionRef.current.mutate({ finalBatchId: batch?.finalBatchId!, parameters, inspectionId: retestId ? Number(retestId) : undefined });
+    } else {
+      router.push('/qc');
+    }
+  }, [router, pendingRetestData, retestId, batch, qcApi]);
 
   const handleLabelInfoError = useCallback((err: { response?: { data?: { message?: string } } }) => {
     toast({
@@ -245,38 +291,36 @@ export default function QcInspectionWorkspace() {
         }
       }
 
-      const fileUploadPromises = Object.entries(filesMap).map(
-        async ([paramIdStr, file]) => {
-          const paramId = Number(paramIdStr);
-          try {
-            const formData = new FormData();
-            formData.append('file', file);
-            formData.append('parameterId', String(paramId));
-            formData.append('finalBatchId', String(batch.finalBatchId));
-            await qcApi.uploadFile(formData);
-          } catch (uploadErr) {
-            console.warn(`File upload for parameter ${paramId} skipped:`, uploadErr);
-          }
-        }
-      );
-
-      if (fileUploadPromises.length > 0) {
-        await Promise.allSettled(fileUploadPromises);
-      }
-
-      const payload = {
+      // Always open QC Label Information dialog first, then save inspection
+      setPendingRetestData({ parameters, filesMap });
+      setLabelInfo({
         finalBatchId: batch.finalBatchId,
-        parameters,
-        inspectionId: retestId ? Number(retestId) : undefined,
-      };
-
-      createInspectionRef.current.mutate(payload);
+        qcInspectionId: undefined,
+        customerName: '',
+        partName: '',
+        partNumber: '',
+        expiryDate: '',
+        compoundName: '',
+        qcStatus: 'PASS',
+      });
+      setLabelInfoDialog(true);
     },
     [batch, retestId, isRetest, retestAuditData, qcApi]
   );
 
   const handleSaveLabelInfo = useCallback(() => {
     if (!labelInfo || !batch) return;
+
+    // Validate all mandatory fields
+    if (!labelInfo.customerName?.trim() || !labelInfo.partName?.trim() || !labelInfo.partNumber?.trim() || !labelInfo.expiryDate || !labelInfo.compoundName?.trim()) {
+      toast({
+        title: 'Missing Label Information',
+        description: 'All fields are required: Customer Name, Part Name, Part Number, Expiry Date, Compound Name.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     saveLabelInfoRef.current.mutate(labelInfo);
   }, [labelInfo, batch]);
 
@@ -302,7 +346,7 @@ export default function QcInspectionWorkspace() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between px-6 py-5">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">
             QC Inspection Workspace

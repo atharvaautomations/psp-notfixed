@@ -704,6 +704,26 @@ enum NotificationType {
   PRODUCTION_EXECUTION_COMPLETED
   SYSTEM_ALERT
   INFO
+  INWARD_ENTRY_CREATED
+  INWARD_ENTRY_UPDATED
+  OUTWARD_ENTRY_CREATED
+  OUTWARD_ENTRY_UPDATED
+  REQUISITION_CREATED
+  REQUISITION_UPDATED
+  REQUISITION_APPROVED
+  REQUISITION_REJECTED
+  REQUISITION_FULFILLED
+  INGREDIENT_CREATED
+  BIN_ASSIGNED
+  BIN_UPDATED
+  RECIPE_CREATED
+  RECIPE_UPDATED
+  WEIGHING_COMPLETED
+  PRODUCTION_EXECUTION_STARTED
+  KNEADER_COMPLETED
+  MIXING_COMPLETED
+  BIN_LOW_STOCK
+  BIN_CAPACITY_EXCEEDED
 }
 
 model Notification {
@@ -712,6 +732,14 @@ model Notification {
   title String
   message String
   type NotificationType
+  module String?
+  action String?
+  severity String?   @default("INFO")
+  referenceId String?
+  activityLogId Int?
+  activityLog   ActivityLog? @relation(fields: [activityLogId], references: [id])
+  metadata Json?
+  navigationRoute String?
 
   userId Int?
   user   User? @relation(fields: [userId], references: [id])
@@ -724,6 +752,7 @@ model Notification {
   @@index([userId])
   @@index([isRead])
   @@index([type])
+  @@index([module])
   @@index([createdAt])
 }
 
@@ -920,7 +949,7 @@ model Alert {
   id          Int      @id @default(autoincrement())
   title       String
   description String
-  type        String   // MIN_STOCK or EXPIRY
+  type        String   // MIN_STOCK or EXPIRY or BIN_LOW_STOCK or BIN_CAPACITY_EXCEEDED
   materialName String
   supplierName String?
   unit        String
@@ -932,10 +961,19 @@ model Alert {
   updatedAt   DateTime @updatedAt
   clearedAt   DateTime?
 
+  // Bin alert fields
+  binNumber         String?
+  currentQuantity   Float?
+  thresholdQuantity Float?
+  attemptedQuantity Float?
+  qrId              String?
+  performedBy       String?
+
   @@index([status])
   @@index([type])
   @@index([materialName])
   @@index([supplierName])
   @@index([createdAt])
   @@index([expiryDate])
+  @@index([binNumber])
 }
