@@ -264,6 +264,8 @@ export const qcApi = {
 
   scanQr: (qrId: string) => api.post<ScanQcResponse>('/qc/scan', { qrId }),
 
+  scanQrForBatchDisposition: (qrId: string) => api.post('/qc/scan/batch-disposition', { qrId }),
+
   createInspection: (data: InspectionPayload) =>
     api.post<CreateInspectionResponse>('/qc/inspection', data),
 

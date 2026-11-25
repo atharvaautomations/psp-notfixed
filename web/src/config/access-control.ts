@@ -16,6 +16,7 @@ export type ModuleKey =
   | 'weighing'
   | 'processTracking'
   | 'qc'
+  | 'batchDisposition'
   | 'reports'
   | 'qrPreview'
   | 'settings'
@@ -54,6 +55,7 @@ export const ROLE_ACCESS: Record<UserRole, ModuleKey[]> = {
     'weighing',
     'processTracking',
     'qc',
+    'batchDisposition',
     'reports',
     'qrPreview',
     'settings',
@@ -68,6 +70,7 @@ export const ROLE_ACCESS: Record<UserRole, ModuleKey[]> = {
     'inventory',
     'processTracking',
     'qc',
+    'batchDisposition',
     'requisition',
     'history',
     'reports',
@@ -91,6 +94,7 @@ export const ROLE_ACCESS: Record<UserRole, ModuleKey[]> = {
     'weighing',
     'processTracking',
     'qc',
+    'batchDisposition',
     'reports',
     'qrPreview',
     'settings',

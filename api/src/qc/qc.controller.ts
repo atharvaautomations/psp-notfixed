@@ -71,6 +71,11 @@ export class QcController {
     return this.qcService.scanQr(dto);
   }
 
+  @Post('scan/batch-disposition')
+  scanQrForBatchDisposition(@Body() dto: ScanQcDto) {
+    return this.qcService.scanQrForBatchDisposition(dto.qrId);
+  }
+
   @Get('inspection')
   findAllInspections() {
     return this.qcService.findAllInspections();

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { RefreshCw, Printer, ChevronRight } from 'lucide-react';
+import { RefreshCw, Printer, ChevronRight, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -182,20 +182,35 @@ export default function QcHistoryTable({ className = '', onRetest }: Props) {
                       )}
 
                       {isFinalPassOrFail && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            printMutation.mutate(item);
-                          }}
-                          disabled={printMutation.isPending}
-                          className="text-xs h-8 gap-1 border-gray-200 text-gray-700 hover:bg-gray-100"
-                          title="Print QC Label"
-                        >
-                          <Printer className="h-3.5 w-3.5 text-gray-500" />
-                          <span>Print QR</span>
-                        </Button>
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              printMutation.mutate(item);
+                            }}
+                            disabled={printMutation.isPending}
+                            className="text-xs h-8 gap-1 border-gray-200 text-gray-700 hover:bg-gray-100"
+                            title="Print QC Label"
+                          >
+                            <Printer className="h-3.5 w-3.5 text-gray-500" />
+                            <span>Print QR</span>
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.location.href = `/batch-disposition?qrId=${encodeURIComponent(item.finalBatch.qrId)}`;
+                            }}
+                            className="text-xs h-8 gap-1 border-gray-200 text-gray-700 hover:bg-gray-100"
+                            title="Batch Disposition"
+                          >
+                            <FileText className="h-3.5 w-3.5 text-gray-500" />
+                            <span>Batch Disposition</span>
+                          </Button>
+                        </>
                       )}
                     </div>
                   </TableCell>

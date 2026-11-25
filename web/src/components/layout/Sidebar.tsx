@@ -107,6 +107,12 @@ const menu: {
     module: 'qc',
   },
   {
+    label: 'Batch Disposition',
+    href: '/batch-disposition',
+    icon: FileText,
+    module: 'batchDisposition',
+  },
+  {
     label: 'Notifications',
     href: '/notifications',
     icon: Bell,
