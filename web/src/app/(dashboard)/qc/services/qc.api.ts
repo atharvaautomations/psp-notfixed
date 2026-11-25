@@ -76,6 +76,11 @@ export interface QcInspectionParameterInputDto {
   specificationText?: string | null;
 }
 
+export interface CreateInspectionResponse {
+  message: string;
+  inspection: QcInspectionDetail;
+}
+
 export interface InspectionPayload {
   finalBatchId: number;
   parameters: QcInspectionParameterInputDto[];
@@ -260,7 +265,7 @@ export const qcApi = {
   scanQr: (qrId: string) => api.post<ScanQcResponse>('/qc/scan', { qrId }),
 
   createInspection: (data: InspectionPayload) =>
-    api.post('/qc/inspection', data),
+    api.post<CreateInspectionResponse>('/qc/inspection', data),
 
   getInspections: () => api.get<QcInspectionHistoryItem[]>('/qc/inspection'),
 

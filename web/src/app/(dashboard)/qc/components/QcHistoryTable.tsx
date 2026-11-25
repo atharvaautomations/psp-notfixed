@@ -388,7 +388,7 @@ export default function QcHistoryTable({ className = '', onRetest }: Props) {
                     Inspection Type
                   </p>
                   <p className="mt-1 font-semibold text-gray-800">
-                    {Boolean(selectedInspection?.remarks?.includes('[RETESTED]')) ? 'Retest' : 'Initial'}
+                    {selectedInspection?.remarks?.includes('[RETESTED]') ? 'Retest' : 'Initial'}
                   </p>
                 </div>
               </div>

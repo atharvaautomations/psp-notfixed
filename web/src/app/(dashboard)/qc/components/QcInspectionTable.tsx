@@ -770,4 +770,6 @@ const QcInspectionTable = React.forwardRef<{ getFormData: () => { parameters: Qc
   );
 });
 
+QcInspectionTable.displayName = "QcInspectionTable";
+
 export default QcInspectionTable;

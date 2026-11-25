@@ -15,6 +15,7 @@ import {
   type QcInspectionParameterInputDto,
   type ScanQcResponse,
   type SaveLabelInfoDto,
+  type CreateInspectionResponse,
 } from '../services/qc.api';
 import QcInspectionTable from '../components/QcInspectionTable';
 import { RetestAuditTable, type RetestAuditData } from '../components/RetestAuditTable';
@@ -70,7 +71,7 @@ export default function QcInspectionWorkspace() {
   // Keep ref updated
   scanMutationRef.current = scanMutation;
 
-  const handleSaveSuccess = useCallback(async (res: { message?: string; inspection?: any }) => {
+  const handleSaveSuccess = useCallback(async (res: CreateInspectionResponse) => {
     toast({ title: res.message || 'Inspection saved successfully' });
     queryClient.invalidateQueries({ queryKey: ['qc-inspections'] });
 
@@ -103,7 +104,7 @@ export default function QcInspectionWorkspace() {
 
     if (shouldShowLabelInfo) {
       setLabelInfo({
-        finalBatchId: batch?.finalBatchId!,
+        finalBatchId: batch?.finalBatchId ?? 0,
         qcInspectionId: res.inspection?.id,
         customerName: '',
         partName: '',
@@ -167,7 +168,7 @@ export default function QcInspectionWorkspace() {
         await Promise.allSettled(fileUploadPromises);
       }
 
-      createInspectionRef.current.mutate({ finalBatchId: batch?.finalBatchId!, parameters, inspectionId: retestId ? Number(retestId) : undefined });
+      createInspectionRef.current.mutate({ finalBatchId: batch?.finalBatchId ?? 0, parameters, inspectionId: retestId ? Number(retestId) : undefined });
     } else {
       router.push('/qc');
     }
