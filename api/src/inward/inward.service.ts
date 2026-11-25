@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
+import { NotificationService } from '../notification/notification.service';
 import { CreateInwardDto } from './dto/create-inward.dto';
 import { UpdateInwardDto } from './dto/update-inward.dto';
 import { QrState, Prisma } from '@prisma/client';
@@ -26,7 +27,8 @@ type PrismaTransactionClient = Omit<
 export class InwardService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly activityLog: ActivityLogService
+    private readonly activityLog: ActivityLogService,
+    private readonly notificationService: NotificationService
   ) {}
 
   private computeStatus(expDate: Date) {
@@ -372,6 +374,26 @@ export class InwardService {
         baseQuantity,
         baseUnit,
       },
+    });
+
+    // Create notification
+    await this.notificationService.create({
+      title: 'New Inward Entry',
+      message: `Inward entry created for ${newInward.materialName} from ${newInward.supplierName}`,
+      type: 'INWARD_ENTRY_CREATED',
+      userId: userInfo?.userId,
+      module: 'inward',
+      action: 'entry_creation',
+      severity: 'INFO',
+      referenceId: newInward.id.toString(),
+      metadata: {
+        materialName: newInward.materialName,
+        supplierName: newInward.supplierName,
+        quantity: dto.quantity,
+        unit: normalizedUnit,
+        grnNumber: newInward.grnNumber,
+      },
+      navigationRoute: `/inward`,
     });
 
     return this.findOne(newInward.id);

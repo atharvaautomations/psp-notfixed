@@ -2,10 +2,12 @@ import {
   Body,
   Controller,
   Get,
+  NotFoundException,
   Param,
   ParseIntPipe,
   Patch,
   Post,
+  Query,
   UseGuards,
   Req,
 } from '@nestjs/common';
@@ -25,7 +27,19 @@ export class NotificationController {
   }
 
   @Get()
-  async findAll(@Req() req: any) {
+  async findAll(
+    @Req() req: any,
+    @Query('isRead') isRead?: string,
+    @Query('type') type?: NotificationType,
+    @Query('module') module?: string,
+    @Query('severity') severity?: string,
+    @Query('search') search?: string,
+    @Query('fromDate') fromDate?: string,
+    @Query('toDate') toDate?: string,
+    @Query('sort') sort?: 'asc' | 'desc',
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
     const userId = req.user?.id;
     return this.notificationService.findAll(userId);
   }
@@ -55,7 +69,14 @@ export class NotificationController {
     @Req() req: any
   ) {
     const userId = req.user?.id;
-    return this.notificationService.markAsRead(id, userId);
+    try {
+      return await this.notificationService.markAsRead(id, userId);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'Notification not found or access denied') {
+        throw new NotFoundException('Notification not found or access denied');
+      }
+      throw error;
+    }
   }
 
   @Post('read-all')

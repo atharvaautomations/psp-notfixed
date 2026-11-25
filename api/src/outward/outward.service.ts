@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
+import { NotificationService } from '../notification/notification.service';
 import { OutwardEntry, QrState } from '@prisma/client';
 import { CreateOutwardDto } from './dto/create-outward.dto';
 import { Logger } from '@nestjs/common';
@@ -20,7 +21,8 @@ import {
 export class OutwardService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly activityLog: ActivityLogService
+    private readonly activityLog: ActivityLogService,
+    private readonly notificationService: NotificationService
   ) {}
   private readonly logger = new Logger(OutwardService.name);
 
@@ -193,6 +195,26 @@ export class OutwardService {
         issuedTo: created.issuedTo,
         bagsIssued: created.bagsIssued,
       },
+    });
+
+    // Create notification
+    await this.notificationService.create({
+      title: 'New Outward Entry',
+      message: `Outward entry created for ${created.materialName} to ${created.issuedTo}`,
+      type: 'OUTWARD_ENTRY_CREATED',
+      module: 'outward',
+      action: 'entry_creation',
+      severity: 'INFO',
+      referenceId: created.id.toString(),
+      metadata: {
+        materialName: created.materialName,
+        supplierName: created.supplierName,
+        quantity: created.quantity,
+        unit: created.unit,
+        issuedTo: created.issuedTo,
+        bagsIssued: created.bagsIssued,
+      },
+      navigationRoute: `/outward`,
     });
 
     return created;

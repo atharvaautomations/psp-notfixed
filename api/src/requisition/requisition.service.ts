@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ActivityLogService } from '../activity-log/activity-log.service';
+import { NotificationService } from '../notification/notification.service';
 import { CreateRequisitionDto } from './dto/create-requisition.dto';
 import { UpdateRequisitionDto } from './dto/update-requisition.dto';
 import { normalizeName, canonicalName } from '../common/utils/normalize';
@@ -21,6 +22,7 @@ export class RequisitionService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly activityLog: ActivityLogService,
+    private readonly notificationService: NotificationService,
     private readonly outwardService: OutwardService,
   ) {}
 
@@ -93,6 +95,26 @@ export class RequisitionService {
           weightPerBag: dto.weightPerBag,
           sourceInwardId: dto.sourceInwardId,
         },
+      });
+
+      // Create notification
+      await this.notificationService.create({
+        title: 'New Requisition Created',
+        message: `Requisition ${requisition.requisitionNumber} created for ${requisition.materialName}`,
+        type: 'REQUISITION_CREATED',
+        userId: userInfo.userId,
+        module: 'requisition',
+        action: 'entry_creation',
+        severity: 'INFO',
+        referenceId: requisition.id.toString(),
+        metadata: {
+          requisitionNumber: requisition.requisitionNumber,
+          materialName: requisition.materialName,
+          supplierName: requisition.supplierName,
+          requiredQuantity,
+          unit: normalizedUnit,
+        },
+        navigationRoute: `/requisition`,
       });
 
       return requisition;
