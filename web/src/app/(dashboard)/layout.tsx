@@ -2,6 +2,7 @@
 import Sidebar from '@/components/layout/Sidebar';
 import Topbar from '@/components/layout/Topbar';
 import { AuthGuard } from '@/components/auth/auth-guard';
+import { Toaster } from '@/components/ui/toaster';
 
 export default function DashboardLayout({
   children,
@@ -21,6 +22,7 @@ export default function DashboardLayout({
           <main className="flex-1 overflow-y-auto bg-gray-50">{children}</main>
         </div>
       </div>
+      <Toaster />
     </AuthGuard>
   );
 }

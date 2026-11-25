@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import {
   ExecutionStatus,
   BatchExecutionStatus,
@@ -41,6 +41,9 @@ export class ExecutionService {
       if (!recipe) {
         throw new NotFoundException('Recipe not found.');
       }
+
+      // Validate bin quantities before creating execution
+      await this.validateBinQuantities(tx, recipe, dto.totalBatches);
 
       const count = await tx.execution.count();
 
@@ -138,6 +141,60 @@ export class ExecutionService {
         },
       };
     });
+  }
+
+  private async validateBinQuantities(tx: any, recipe: any, totalBatches: number) {
+    // Collect all ingredients from recipe steps with their total required quantities
+    const ingredientRequirements = new Map<number, {
+      ingredient: any;
+      totalRequired: number;
+    }>();
+
+    for (const step of recipe.steps) {
+      for (const ingredient of step.ingredients) {
+        const ingredientId = ingredient.ingredientId;
+        const quantityPerBatch = ingredient.quantity;
+        const totalRequired = quantityPerBatch * recipe.totalBatches;
+
+        if (ingredientRequirements.has(ingredientId)) {
+          ingredientRequirements.get(ingredientId)!.totalRequired += quantityPerBatch * recipe.totalBatches;
+        } else {
+          ingredientRequirements.set(ingredientId, {
+            ingredient: ingredient.ingredient,
+            totalRequired: quantityPerBatch * recipe.totalBatches,
+          });
+        }
+      }
+
+      // Now validate each ingredient's bin has enough quantity
+      for (const [ingredientId, requirement] of ingredientRequirements.entries()) {
+        const { ingredient, totalRequired } = requirement;
+
+        if (!ingredient.bins || ingredient.bins.length === 0) {
+          throw new BadRequestException(
+            `Ingredient "${ingredient.name || ingredient.ingredientCode || ingredient.materialName}" is not assigned to any bin. Cannot create execution.`
+          );
+        }
+
+        const bin = ingredient.bins[0];
+        const availableQuantity = bin.currentQuantity - bin.minQuantity;
+
+        if (availableQuantity < 0) {
+          throw new BadRequestException(
+            `Bin ${bin.binNumber} for ingredient "${ingredient.name || ingredient.ingredientCode || ingredient.materialName}" has current quantity (${bin.currentQuantity} kg) below minimum quantity (${bin.minQuantity} kg). Cannot create execution.`
+          );
+        }
+
+        if (bin.currentQuantity < requirement.totalRequired + bin.minQuantity) {
+          throw new BadRequestException(
+            `Unable to create execution. Bin ${bin.binNumber} has insufficient quantity for ingredient "${ingredient.name || ingredient.ingredientCode || ingredient.materialName}". ` +
+            `Available: ${bin.currentQuantity} kg. ` +
+            `Required for ${recipe.totalBatches} batches: ${requirement.totalRequired} kg + Minimum to maintain: ${bin.minQuantity} kg = ${requirement.totalRequired + bin.minQuantity} kg. ` +
+            `Please fill the bin before creating the execution.`
+          );
+        }
+      }
+    }
   }
 
   async findExecutionQrs(id: number) {

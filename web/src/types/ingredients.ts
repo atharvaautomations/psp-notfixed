@@ -6,4 +6,13 @@ export interface Ingredient {
   type?: string;
   createdAt?: string;
   updatedAt?: string;
+  bins?: {
+    id: number;
+    binNumber: string;
+    minQuantity: number;
+    maxQuantity: number;
+    currentQuantity: number;
+    createdAt: string;
+    updatedAt: string;
+  }[];
 }

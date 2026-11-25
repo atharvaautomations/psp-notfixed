@@ -151,9 +151,9 @@ export default function StepList({
                             <SelectItem value="loading" disabled>
                               Loading...
                             </SelectItem>
-                          ) : ingredientOptions.length === 0 ? (
+                          ) : ingredientOptions.filter(ing => ing.bins && ing.bins.length > 0).length === 0 ? (
                             <SelectItem value="none" disabled>
-                              No ingredients found
+                              No ingredients assigned to bins
                             </SelectItem>
                           ) : (
                             ingredientOptions
@@ -161,7 +161,8 @@ export default function StepList({
                                 (ingItem) =>
                                   !selectedInStep.has(
                                     ingItem.ingredientCode ?? ''
-                                  )
+                                  ) &&
+                                  (ingItem.bins && ingItem.bins.length > 0)
                               )
                               .map((ingItem) => (
                                 <SelectItem
