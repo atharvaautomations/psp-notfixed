@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from '@/components/ui/use-toast';
 import { Header, PageContainer } from '@/components/global';
+import { useSearchParams } from 'next/navigation';
 import { qcApi } from '@/app/(dashboard)/qc/services/qc.api';
 
 interface BatchDispositionData {
@@ -58,6 +59,8 @@ interface BatchDispositionData {
 }
 
 export default function BatchDispositionPage() {
+  const searchParams = useSearchParams();
+
   const [qrId, setQrId] = useState('');
   const [batchData, setBatchData] = useState<BatchDispositionData | null>(null);
   const [loading, setLoading] = useState(false);
@@ -82,6 +85,16 @@ export default function BatchDispositionPage() {
       });
     },
   });
+
+  // Auto-scan when qrId is provided in URL query params
+  React.useEffect(() => {
+    const urlQrId = searchParams.get('qrId');
+    if (urlQrId && !batchData && !loading) {
+      setQrId(urlQrId);
+      setLoading(true);
+      scanMutation.mutate(urlQrId);
+    }
+  }, [searchParams, batchData, loading, scanMutation]);
 
   const handleScan = useCallback(() => {
     if (!qrId.trim()) {
@@ -411,7 +424,9 @@ export default function BatchDispositionPage() {
                   <p className="text-xs font-medium text-gray-500 uppercase tracking-tighter">
                     QC Status
                   </p>
-                  <p className="mt-1 inline-flex items-center rounded-full px-3 py-1 text-xs font-medium border border-transparent text-white bg-green-600 shadow-sm">
+                  <p className={`mt-1 inline-flex items-center rounded-full px-3 py-1 text-xs font-medium border border-transparent text-white shadow-sm ${
+                    batchData.labelInfo.qcStatus === 'FAIL' ? 'bg-red-600' : 'bg-green-600'
+                  }`}>
                     {batchData.labelInfo.qcStatus}
                   </p>
                 </div>

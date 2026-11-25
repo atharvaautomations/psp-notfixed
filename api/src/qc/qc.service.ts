@@ -404,7 +404,7 @@ export class QcService {
         partNumber: labelInfo.partNumber,
         expiryDate: labelInfo.expiryDate,
         compoundName: labelInfo.compoundName,
-        qcStatus: labelInfo.qcStatus,
+        qcStatus: qcSpecificationStatus, // Show actual QC Specification result
         mixingDate: labelInfo.mixingDate,
         shift: labelInfo.shift,
       } : null,
