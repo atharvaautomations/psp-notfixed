@@ -337,6 +337,9 @@ model Execution {
   masterBatchExpiringDate DateTime?
   finalBatchExpiringDate DateTime?
 
+  operatorId Int?
+  operator   User? @relation("ExecutionOperator", fields: [operatorId], references: [id])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -737,7 +740,7 @@ model Notification {
   severity String?   @default("INFO")
   referenceId String?
   activityLogId Int?
-  activityLog   ActivityLog? @relation(fields: [activityLogId], references: [id])
+  activityLog   ActivityLog? @relation("NotificationActivityLog", fields: [activityLogId], references: [id])
   metadata Json?
   navigationRoute String?
 
@@ -774,6 +777,7 @@ model User {
 
   operatorSchedules ExecutionSchedule[] @relation("OperatorSchedules")
   createdSchedules  ExecutionSchedule[] @relation("CreatedSchedules")
+  executions Execution[] @relation("ExecutionOperator")
 
   inspectedQc QcInspection[] @relation("QcInspectionInspectedBy")
   uploadedQcFiles QcInspectionFile[]
@@ -868,12 +872,13 @@ model ActivityLog {
   metadata     Json?
   createdAt    DateTime @default(now())
 
+  notifications Notification[] @relation("NotificationActivityLog")
+
   @@index([createdAt])
   @@index([moduleType])
   @@index([activityType])
   @@index([referenceId])
   @@index([userId])
-  @@index([status])
 }
 
 model Requisition {

@@ -1,9 +1,14 @@
 'use client';
 
+import { useState } from 'react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card } from '@/components/global';
 import { Button } from '@/components/ui/button';
 import { ExecutionItem, ExecutionStatus } from '../types/execution';
-import { QrCode, Pencil, Trash2 } from 'lucide-react';
+import { QrCode, Pencil, Trash2, Play, Loader2 } from 'lucide-react';
+import api from '@/lib/api';
+import { toast } from '@/hooks/use-toast';
+import { EXECUTION_QUERY_KEYS } from '../hooks/useExecution';
 
 interface ExecutionTableProps {
   executions: ExecutionItem[];
@@ -20,6 +25,13 @@ const statusStyles: Record<ExecutionStatus, string> = {
   CANCELLED: 'bg-red-100 text-red-700',
 };
 
+const statusLabels: Record<ExecutionStatus, string> = {
+  PENDING: 'CREATED',
+  RUNNING: 'IN PROGRESS',
+  COMPLETED: 'COMPLETED',
+  CANCELLED: 'CANCELLED',
+};
+
 export function ExecutionTable({
   executions,
   onPrintAll,
@@ -27,6 +39,39 @@ export function ExecutionTable({
   onEdit,
   onDelete,
 }: ExecutionTableProps) {
+  const queryClient = useQueryClient();
+  const [startingId, setStartingId] = useState<string | null>(null);
+
+  const startMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return api.post(`/executions/${id}/start`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: EXECUTION_QUERY_KEYS.all });
+      toast({
+        title: 'Execution started',
+        description: 'The execution is now in progress.',
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: 'Unable to start execution',
+        description:
+          err?.response?.data?.message || 'Failed to start the execution.',
+        variant: 'destructive',
+      });
+    },
+    onSettled: () => {
+      setStartingId(null);
+    },
+  });
+
+  const handleStart = (execution: ExecutionItem) => {
+    if (startingId) return;
+    setStartingId(execution.id);
+    startMutation.mutate(execution.id);
+  };
+
   return (
     <Card noPadding>
       <div className="overflow-x-auto">
@@ -52,7 +97,10 @@ export function ExecutionTable({
           </thead>
           <tbody className="divide-y divide-gray-200 bg-white">
             {executions.map((execution) => {
-              const isReadOnly = execution.status !== 'PENDING';
+              const isCreated = execution.status === 'PENDING';
+              const isRunning = execution.status === 'RUNNING';
+              const isCompleted = execution.status === 'COMPLETED';
+              const isStarting = startingId === execution.id;
 
               return (
                 <tr key={execution.id} className="hover:bg-gray-50">
@@ -71,12 +119,48 @@ export function ExecutionTable({
                         statusStyles[execution.status]
                       }`}
                     >
-                      {execution.status}
+                      {statusLabels[execution.status]}
                     </span>
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-sm">
-                    <div className="flex flex-wrap gap-2">
-                      <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {isCreated && (
+                        <>
+                          <Button
+                            size="sm"
+                            className="gap-1 bg-green-600 text-white hover:bg-green-700"
+                            disabled={isStarting}
+                            onClick={() => handleStart(execution)}
+                          >
+                            {isStarting ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Play className="h-4 w-4" />
+                            )}
+                            {isStarting ? 'Starting...' : 'START'}
+                          </Button>
+
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="border-amber-200 text-amber-600 hover:bg-amber-50"
+                            onClick={() => onEdit(execution)}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="border-red-200 text-red-600 hover:bg-red-50"
+                            onClick={() => onDelete(execution)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </>
+                      )}
+
+                      {(isRunning || isCompleted) && (
                         <Button
                           variant="outline"
                           size="icon"
@@ -85,27 +169,7 @@ export function ExecutionTable({
                         >
                           <QrCode className="h-4 w-4" />
                         </Button>
-
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="border-amber-200 text-amber-600 hover:bg-amber-50"
-                          disabled={isReadOnly}
-                          onClick={() => onEdit(execution)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="border-red-200 text-red-600 hover:bg-red-50"
-                          disabled={isReadOnly}
-                          onClick={() => onDelete(execution)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
+                      )}
                     </div>
                   </td>
                 </tr>

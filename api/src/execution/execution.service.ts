@@ -5,6 +5,7 @@ import {
   BatchProcessStatus,
   IngredientExecutionStatus,
   StepType,
+  UserRole,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateExecutionDto } from './dto/create-execution.dto';
@@ -42,8 +43,8 @@ export class ExecutionService {
         throw new NotFoundException('Recipe not found.');
       }
 
-      // Validate bin quantities before creating execution
-      await this.validateBinQuantities(tx, recipe, dto.totalBatches);
+      // Skip bin quantity validation during creation - validation will happen at START
+      // await this.validateBinQuantities(tx, recipe, dto.totalBatches);
 
       const count = await tx.execution.count();
 
@@ -64,8 +65,39 @@ export class ExecutionService {
           productionBatchNumber: dto.productionBatchNumber,
           masterBatchExpiringDate: dto.masterBatchExpiringDate ? new Date(dto.masterBatchExpiringDate) : null,
           finalBatchExpiringDate: dto.finalBatchExpiringDate ? new Date(dto.finalBatchExpiringDate) : null,
+          operatorId: dto.operatorId,
         },
       });
+
+      // Create schedule if operatorId is provided
+      if (dto.operatorId) {
+        const operator = await tx.user.findUnique({
+          where: { id: dto.operatorId },
+        });
+
+        if (!operator) {
+          throw new NotFoundException('Selected operator not found.');
+        }
+
+        if (operator.role !== UserRole.OPERATOR) {
+          throw new BadRequestException('Selected user is not an operator.');
+        }
+
+        if (!operator.isActive) {
+          throw new BadRequestException('Selected operator is inactive.');
+        }
+
+        await tx.executionSchedule.create({
+          data: {
+            scheduleCode: `SCH-${execution.executionCode}-${dto.operatorId}`,
+            executionId: execution.id,
+            operatorId: dto.operatorId,
+            scheduleDate: new Date(),
+            status: 'PENDING',
+            createdById: dto.operatorId,
+          },
+        });
+      }
 
       const batches = [];
 
@@ -148,53 +180,237 @@ export class ExecutionService {
     const ingredientRequirements = new Map<number, {
       ingredient: any;
       totalRequired: number;
+      minQuantity: number;
+      binNumber: string;
     }>();
 
     for (const step of recipe.steps) {
-      for (const ingredient of step.ingredients) {
-        const ingredientId = ingredient.ingredientId;
-        const quantityPerBatch = ingredient.quantity;
-        const totalRequired = quantityPerBatch * recipe.totalBatches;
+      for (const stepIngredient of step.ingredients) {
+        const ingredient = stepIngredient.ingredient;
+        const bin = ingredient.bins?.[0];
 
-        if (ingredientRequirements.has(ingredientId)) {
-          ingredientRequirements.get(ingredientId)!.totalRequired += quantityPerBatch * recipe.totalBatches;
+        if (!bin) {
+          return {
+            valid: false,
+            message: `Ingredient "${ingredient.name || ingredient.ingredientCode || ingredient.materialName}" is not assigned to any bin.`,
+          };
+        }
+
+        const requiredPerBatch = stepIngredient.baseQuantity ?? stepIngredient.quantity ?? 0;
+        const totalRequired = requiredPerBatch * totalBatches;
+
+        const existing = ingredientRequirements.get(ingredient.id);
+        if (existing) {
+          existing.totalRequired += totalRequired;
         } else {
-          ingredientRequirements.set(ingredientId, {
-            ingredient: ingredient.ingredient,
-            totalRequired: quantityPerBatch * recipe.totalBatches,
+          ingredientRequirements.set(ingredient.id, {
+            ingredient,
+            totalRequired,
+            minQuantity: bin.minQuantity,
+            binNumber: bin.binNumber,
           });
         }
       }
 
-      // Now validate each ingredient's bin has enough quantity
+      // Now validate each ingredient
       for (const [ingredientId, requirement] of ingredientRequirements.entries()) {
-        const { ingredient, totalRequired } = requirement;
+        const { ingredient, totalRequired, minQuantity, binNumber } = requirement;
+        const bin = ingredient.bins?.[0];
 
-        if (!ingredient.bins || ingredient.bins.length === 0) {
-          throw new BadRequestException(
-            `Ingredient "${ingredient.name || ingredient.ingredientCode || ingredient.materialName}" is not assigned to any bin. Cannot create execution.`
-          );
+        if (!bin) {
+          return {
+            valid: false,
+            message: `Ingredient "${ingredient.name || ingredient.ingredientCode || ingredient.materialName}" is not assigned to any bin.`,
+          };
         }
 
-        const bin = ingredient.bins[0];
-        const availableQuantity = bin.currentQuantity - bin.minQuantity;
+        const currentQuantity = bin.currentQuantity;
+        const totalRequiredWithMin = totalRequired + minQuantity;
 
-        if (availableQuantity < 0) {
-          throw new BadRequestException(
-            `Bin ${bin.binNumber} for ingredient "${ingredient.name || ingredient.ingredientCode || ingredient.materialName}" has current quantity (${bin.currentQuantity} kg) below minimum quantity (${bin.minQuantity} kg). Cannot create execution.`
-          );
+        if (currentQuantity < totalRequiredWithMin) {
+          const shortage = totalRequiredWithMin - currentQuantity;
+          return {
+            valid: false,
+            message: `Insufficient quantity in bin ${binNumber} for ingredient "${ingredient.name || ingredient.ingredientCode || ingredient.materialName}". Required: ${totalRequiredWithMin} kg, Available: ${currentQuantity} kg. Shortage: ${shortage} kg.`,
+          };
+        }
+      }
+
+      return { valid: true };
+    }
+  }
+
+  async startExecution(executionId: number, userId: number) {
+    return this.prisma.$transaction(async (tx) => {
+      // Get the execution with all related data
+      const execution = await tx.execution.findUnique({
+        where: { id: executionId },
+        include: {
+          recipe: {
+            include: {
+              steps: {
+                include: {
+                  ingredients: {
+                    include: {
+                      ingredient: {
+                        include: {
+                          bins: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+            batches: true,
+            schedules: {
+              include: { operator: true },
+            },
+          },
+        });
+
+      if (!execution) {
+        throw new NotFoundException('Execution not found.');
+      }
+
+      // Check if execution is in PENDING status (CREATED)
+      if (execution.status !== ExecutionStatus.PENDING) {
+        throw new BadRequestException('Execution can only be started from CREATED status.');
+      }
+
+      // Check if the user is the assigned operator
+      const schedule = execution.schedules[0];
+      if (!schedule || schedule.operatorId !== userId) {
+        throw new BadRequestException('Only the assigned operator can start this execution.');
+      }
+
+      // Validate bin quantities
+      const validationResult = await this.validateBinQuantitiesForStart(tx, execution);
+      
+      if (!validationResult.valid) {
+        throw new BadRequestException(validationResult.message);
+      }
+
+      // Atomically claim the execution (PENDING -> RUNNING) to prevent
+      // concurrent requests from starting the same execution twice.
+      const claimed = await tx.execution.updateMany({
+        where: {
+          id: executionId,
+          status: ExecutionStatus.PENDING,
+        },
+        data: {
+          status: ExecutionStatus.RUNNING,
+        },
+      });
+
+      if (claimed.count === 0) {
+        throw new BadRequestException(
+          'Execution has already been started or is no longer in CREATED status.'
+        );
+      }
+
+      // Update all batches to RUNNING
+      await tx.executionBatch.updateMany({
+        where: { executionId: executionId },
+        data: {
+          status: BatchExecutionStatus.RUNNING,
+          startedAt: new Date(),
+        },
+      });
+
+      return {
+        message: 'Execution started successfully.',
+        execution: {
+          id: execution.id,
+          executionCode: execution.executionCode,
+          status: ExecutionStatus.RUNNING,
+        },
+      };
+    });
+  }
+
+  private async validateBinQuantitiesForStart(
+    tx: any,
+    execution: any
+  ): Promise<{ valid: boolean; message?: string; details?: any }> {
+    // Collect all ingredients from recipe steps with their total required quantities
+    const ingredientRequirements = new Map<number, {
+      ingredient: any;
+      totalRequired: number;
+      minQuantity: number;
+      binNumber: string;
+    }>();
+
+    for (const step of execution.recipe.steps) {
+      for (const stepIngredient of step.ingredients) {
+        const ingredient = stepIngredient.ingredient;
+        const bin = ingredient.bins?.[0];
+
+        if (!bin) {
+          return {
+            valid: false,
+            message: `Ingredient "${ingredient.name || ingredient.ingredientCode || ingredient.materialName}" is not assigned to any bin.`,
+          };
         }
 
-        if (bin.currentQuantity < requirement.totalRequired + bin.minQuantity) {
-          throw new BadRequestException(
-            `Unable to create execution. Bin ${bin.binNumber} has insufficient quantity for ingredient "${ingredient.name || ingredient.ingredientCode || ingredient.materialName}". ` +
-            `Available: ${bin.currentQuantity} kg. ` +
-            `Required for ${recipe.totalBatches} batches: ${requirement.totalRequired} kg + Minimum to maintain: ${bin.minQuantity} kg = ${requirement.totalRequired + bin.minQuantity} kg. ` +
-            `Please fill the bin before creating the execution.`
-          );
+        const requiredPerBatch = stepIngredient.baseQuantity ?? stepIngredient.quantity ?? 0;
+        const totalRequired = requiredPerBatch * execution.totalBatches;
+
+        const existing = ingredientRequirements.get(ingredient.id);
+        if (existing) {
+          existing.totalRequired += totalRequired;
+        } else {
+          ingredientRequirements.set(ingredient.id, {
+            ingredient,
+            totalRequired,
+            minQuantity: bin.minQuantity,
+            binNumber: bin.binNumber,
+          });
         }
       }
     }
+
+    // Validate each aggregated ingredient against its bin
+    for (const [, requirement] of ingredientRequirements.entries()) {
+      const { ingredient, totalRequired, minQuantity, binNumber } = requirement;
+      const bin = ingredient.bins?.[0];
+
+      if (!bin) {
+        return {
+          valid: false,
+          message: `Ingredient "${ingredient.name || ingredient.ingredientCode || ingredient.materialName}" is not assigned to any bin.`,
+        };
+      }
+
+      const currentQuantity = bin.currentQuantity;
+      const totalRequiredWithMin = totalRequired + minQuantity;
+
+      if (currentQuantity < totalRequiredWithMin) {
+        const shortage = totalRequiredWithMin - currentQuantity;
+        const ingredientName =
+          ingredient.name || ingredient.ingredientCode || ingredient.materialName;
+        return {
+          valid: false,
+          message:
+            `Unable to start execution. Bin ${binNumber} has insufficient quantity for ingredient "${ingredientName}". ` +
+            `Available: ${currentQuantity} kg. Required for ${execution.totalBatches} batches: ${totalRequired} kg ` +
+            `+ Minimum to maintain: ${minQuantity} kg = ${totalRequiredWithMin} kg. Shortage: ${shortage} kg. ` +
+            `Please fill the bin before starting the execution.`,
+          details: {
+            ingredient: ingredientName,
+            bin: binNumber,
+            currentQuantity,
+            requiredQuantity: totalRequired,
+            minQuantity,
+            totalRequired: totalRequiredWithMin,
+            shortage,
+          },
+        };
+      }
+    }
+
+    return { valid: true };
   }
 
   async findExecutionQrs(id: number) {
@@ -339,17 +555,6 @@ export class ExecutionService {
       overallProgress,
 
       batches: execution.batches.map((batch) => {
-        /*
-         * ---------------------------------------------------------
-         * WEIGHING
-         * ---------------------------------------------------------
-         *
-         * Weighing completion is based ONLY on actualQuantity.
-         *
-         * We deliberately do not use CONSUMED here because an
-         * ingredient can already have moved into Kneader/Mixing
-         * after weighing was completed.
-         */
         const weighingIngredients = batch.ingredients.map((ingredient) => ({
           id: ingredient.id,
 
@@ -389,12 +594,6 @@ export class ExecutionService {
           weighingStatus = 'PENDING';
         }
 
-        /*
-         * ---------------------------------------------------------
-         * PROCESS SECTION BUILDER
-         * ---------------------------------------------------------
-         */
-
         const buildProcessSection = (
           batchType: 'MASTER_BATCH' | 'FINAL_BATCH'
         ) => {
@@ -406,12 +605,6 @@ export class ExecutionService {
             return null;
           }
 
-          /*
-           * A batch type belongs to whichever process its recipe
-           * steps are configured for.
-           *
-           * This is display/tracking logic only.
-           */
           const processType =
             relevantSteps.find((step) => step.stepType === 'KNEADER')
               ?.stepType ??
@@ -433,15 +626,6 @@ export class ExecutionService {
               ingredient.stepType === processType
           );
 
-          /*
-           * A process ingredient is shown completed once the
-           * existing workflow has either:
-           *
-           * 1. scanned it in the relevant process, or
-           * 2. marked it CONSUMED after stage completion.
-           *
-           * No state is changed here.
-           */
           const ingredientRows = processIngredients.map((ingredient) => {
             const scanned =
               processType === 'KNEADER'
@@ -466,11 +650,6 @@ export class ExecutionService {
             };
           });
 
-          /*
-           * A sequence is completed only when every ingredient
-           * belonging to that sequence has been CONSUMED by the
-           * existing workflow.
-           */
           const sequenceRows = processSteps.map((step) => {
             const stepIngredients = processIngredients.filter(
               (ingredient) => ingredient.recipeStepId === step.id
@@ -522,11 +701,6 @@ export class ExecutionService {
             recipeWritten = batch.mixingExecution.recipeWritten;
           }
 
-          /*
-           * Status is derived only for tracking/display.
-           *
-           * We are NOT writing anything back to the DB here.
-           */
           let status: 'PENDING' | 'RUNNING' | 'COMPLETED';
 
           if (totalSteps > 0 && completedSteps === totalSteps) {
@@ -572,10 +746,6 @@ export class ExecutionService {
         const masterBatch = buildProcessSection('MASTER_BATCH');
         const finalBatch = buildProcessSection('FINAL_BATCH');
 
-        /*
-         * Existing batch overview.
-         * Kept because you said the batch-wise summary should remain.
-         */
         let currentProcess: 'WEIGHING' | 'KNEADER' | 'MIXING' | 'COMPLETED';
 
         if (weighingStatus !== 'COMPLETED') {
@@ -607,9 +777,6 @@ export class ExecutionService {
 
           currentProcess,
 
-          /*
-           * NEW TRACKING SECTIONS
-           */
           weighing: {
             status: weighingStatus,
 
@@ -625,10 +792,6 @@ export class ExecutionService {
 
           finalBatch,
 
-          /*
-           * QR values remain exactly the same data generated by
-           * the existing workflow.
-           */
           masterBatchQr: batch.masterBatch?.qrId ?? null,
           finalBatchQr: batch.finalBatch?.qrId ?? null,
         };

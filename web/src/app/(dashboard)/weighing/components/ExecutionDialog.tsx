@@ -41,20 +41,26 @@ interface ExecutionDialogProps {
   recipes: RecipeOption[];
   selectedRecipeId: string;
   selectedVersionId: string;
-  batchCount: number;
+  batchCount: string;
   productionBatchNumber: string;
   masterBatchExpiringDate: string;
   finalBatchExpiringDate: string;
+  operatorId: string;
   recipeError?: string;
   versionError?: string;
   batchError?: string;
   productionBatchError?: string;
+  operatorError?: string;
+  finalBatchExpiringDateError?: string;
+  operators: { id: number; name: string }[];
+  operatorsLoading?: boolean;
   onRecipeChange: (value: string) => void;
   onVersionChange: (value: string) => void;
   onBatchCountChange: (value: string) => void;
   onProductionBatchNumberChange: (value: string) => void;
   onMasterBatchExpiringDateChange: (value: string) => void;
   onFinalBatchExpiringDateChange: (value: string) => void;
+  onOperatorChange: (value: string) => void;
   onSubmit: () => void;
 }
 
@@ -68,17 +74,23 @@ export function ExecutionDialog({
   productionBatchNumber,
   masterBatchExpiringDate,
   finalBatchExpiringDate,
+  operatorId,
   recipeError,
   versionError,
   batchError,
   productionBatchError,
+  operatorError,
+  finalBatchExpiringDateError,
+  operatorsLoading,
   onRecipeChange,
   onVersionChange,
   onBatchCountChange,
   onProductionBatchNumberChange,
   onMasterBatchExpiringDateChange,
   onFinalBatchExpiringDateChange,
+  onOperatorChange,
   onSubmit,
+  operators,
 }: ExecutionDialogProps) {
   const [versions, setVersions] = useState<RecipeVersionRow[]>([]);
   const [loadingVersions, setLoadingVersions] = useState(false);
@@ -281,10 +293,56 @@ export function ExecutionDialog({
                 value={finalBatchExpiringDate}
                 onChange={(event) => onFinalBatchExpiringDateChange(event.target.value)}
               />
+              {finalBatchExpiringDateError ? (
+                <p className="text-sm text-red-600">{finalBatchExpiringDateError}</p>
+              ) : null}
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">
+                Operator Name <span className="text-red-500">*</span>
+              </label>
+              {operatorsLoading ? (
+                <Select value="" disabled>
+                  <SelectTrigger className="bg-white">
+                    <SelectValue placeholder="Loading operators..." />
+                  </SelectTrigger>
+                  <SelectContent />
+                </Select>
+              ) : operators.length === 0 ? (
+                <Select value="" disabled>
+                  <SelectTrigger className="bg-white">
+                    <SelectValue placeholder="No active operators available" />
+                  </SelectTrigger>
+                  <SelectContent />
+                </Select>
+              ) : (
+                <Select
+                  value={operatorId}
+                  onValueChange={onOperatorChange}
+                >
+                  <SelectTrigger className="bg-white">
+                    <SelectValue placeholder="Select operator" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {operators.map((operator) => (
+                      <SelectItem
+                        key={operator.id}
+                        value={String(operator.id)}
+                      >
+                        {operator.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {operatorError ? (
+                <p className="text-sm text-red-600">{operatorError}</p>
+              ) : null}
             </div>
           </div>
 
-          <ExecutionPreview recipe={previewRecipe} batchCount={batchCount} />
+          <ExecutionPreview recipe={previewRecipe} batchCount={Number(batchCount) || 0} />
 
           <DialogFooter>
             <Button

@@ -9,6 +9,7 @@ import { CompleteWeighingDto } from './dto/complete-weighing.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
+import { CurrentUser } from '../auth/current-user.decorator';
 
 @Controller('weighing')
 export class WeighingController {
@@ -29,8 +30,8 @@ export class WeighingController {
   @Get('executions')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.RUBBER_TECHNOLOGIST, UserRole.OPERATOR)
-  findAllExecutions() {
-    return this.weighingService.findAllExecutions();
+  findAllExecutions(@CurrentUser() user: any) {
+    return this.weighingService.findAllExecutions(user);
   }
 
   @Get('executions/:id/final-batch-qrs')

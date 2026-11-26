@@ -10,12 +10,15 @@ import { ExecutionDialog } from './ExecutionDialog';
 import { ExecutionTable } from './ExecutionTable';
 import { ExecutionItem } from '../types/execution';
 import { useExecution, useCreateExecution } from '../hooks/useExecution';
+import { useAvailableOperators } from '../hooks/useScheduling';
 import ExecutionQrPreviewModal from './ExecutionQrPreviewModal';
 
 export function BulkWeighing() {
   const router = useRouter();
   const { recipes, executions } = useExecution();
   const createExecution = useCreateExecution();
+  const { data: operators = [], isLoading: operatorsLoading } =
+    useAvailableOperators();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedRecipeId, setSelectedRecipeId] = useState('');
   const [selectedVersionId, setSelectedVersionId] = useState('');
@@ -23,10 +26,12 @@ export function BulkWeighing() {
   const [productionBatchNumber, setProductionBatchNumber] = useState('');
   const [masterBatchExpiringDate, setMasterBatchExpiringDate] = useState('');
   const [finalBatchExpiringDate, setFinalBatchExpiringDate] = useState('');
+  const [operatorId, setOperatorId] = useState('');
   const [recipeError, setRecipeError] = useState('');
   const [versionError, setVersionError] = useState('');
   const [batchError, setBatchError] = useState('');
   const [productionBatchError, setProductionBatchError] = useState('');
+  const [operatorError, setOperatorError] = useState('');
   const [selectedExecution, setSelectedExecution] =
     useState<ExecutionItem | null>(null);
   const [qrPreviewOpen, setQrPreviewOpen] = useState(false);
@@ -38,10 +43,12 @@ export function BulkWeighing() {
     setProductionBatchNumber('');
     setMasterBatchExpiringDate('');
     setFinalBatchExpiringDate('');
+    setOperatorId('');
     setRecipeError('');
     setVersionError('');
     setBatchError('');
     setProductionBatchError('');
+    setOperatorError('');
   };
 
   const handleSubmit = () => {
@@ -55,15 +62,17 @@ export function BulkWeighing() {
       ? ''
       : 'Select a recipe version.';
     const nextBatchError =
-      Number.isFinite(parsedBatchCount) && parsedBatchCount > 0
+      Number.isFinite(parsedBatchCount) && parsedBatchCount >= 1
         ? ''
-        : 'Number of batches must be greater than 0.';
+        : 'Enter a valid number of batches.';
+    const nextOperatorError = operatorId ? '' : 'Please select an operator.';
 
     setRecipeError(nextRecipeError);
     setVersionError(nextVersionError);
     setBatchError(nextBatchError);
+    setOperatorError(nextOperatorError);
 
-    if (nextRecipeError || nextVersionError || nextBatchError) {
+    if (nextRecipeError || nextVersionError || nextBatchError || nextOperatorError) {
       return;
     }
 
@@ -74,6 +83,7 @@ export function BulkWeighing() {
         recipeId: Number(trimmedVersionId),
         totalBatches: parsedBatchCount,
         mode: 'BULK',
+        operatorId: Number(operatorId),
         productionBatchNumber: productionBatchNumber.trim(),
         masterBatchExpiringDate: masterBatchExpiringDate || undefined,
         finalBatchExpiringDate: finalBatchExpiringDate || undefined,
@@ -136,7 +146,7 @@ export function BulkWeighing() {
         />
       </div>
 
-      <ExecutionDialog
+<ExecutionDialog
         open={dialogOpen}
         onOpenChange={(open) => {
           setDialogOpen(open);
@@ -147,14 +157,16 @@ export function BulkWeighing() {
         recipes={recipes}
         selectedRecipeId={selectedRecipeId}
         selectedVersionId={selectedVersionId}
-        batchCount={Number(batchCount)}
+        batchCount={batchCount}
         productionBatchNumber={productionBatchNumber}
         masterBatchExpiringDate={masterBatchExpiringDate}
         finalBatchExpiringDate={finalBatchExpiringDate}
+        operatorId={operatorId}
         recipeError={recipeError}
         versionError={versionError}
         batchError={batchError}
         productionBatchError={productionBatchError}
+        operatorError={operatorError}
         onRecipeChange={(value) => {
           setSelectedRecipeId(value);
           setSelectedVersionId('');
@@ -186,7 +198,15 @@ export function BulkWeighing() {
         onFinalBatchExpiringDateChange={(value) => {
           setFinalBatchExpiringDate(value);
         }}
+        onOperatorChange={(value) => {
+          setOperatorId(value);
+          if (operatorError) {
+            setOperatorError('');
+          }
+        }}
         onSubmit={handleSubmit}
+        operators={operators}
+        operatorsLoading={operatorsLoading}
       />
       <ExecutionQrPreviewModal
         open={qrPreviewOpen}

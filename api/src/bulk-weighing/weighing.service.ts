@@ -7,6 +7,7 @@ import {
   IngredientExecutionStatus,
   ExecutionStatus,
   BatchExecutionStatus,
+  UserRole,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ScanQrDto } from './dto/scan-qr.dto';
@@ -244,8 +245,14 @@ export class WeighingService {
     });
   }
 
-  async findAllExecutions() {
+  async findAllExecutions(user?: { id: number; role?: string }) {
+    const where =
+      user?.role === UserRole.OPERATOR
+        ? { operatorId: Number(user.id) }
+        : undefined;
+
     const executions = await this.prisma.execution.findMany({
+      where,
       orderBy: {
         createdAt: 'desc',
       },

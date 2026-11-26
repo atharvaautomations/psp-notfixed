@@ -94,13 +94,8 @@ export function WeighingHistory() {
               Track all weighing executions and their status
             </p>
           </div>
-          <Button
-            variant="outline"
-            className="flex items-center gap-2"
-          >
-            <Button variant="outline" size="sm" className="gap-2">
-              Refresh
-            </Button>
+          <Button variant="outline" size="sm" className="gap-2">
+            Refresh
           </Button>
         </div>
 

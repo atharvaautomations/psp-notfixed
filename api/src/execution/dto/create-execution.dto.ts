@@ -23,4 +23,7 @@ export class CreateExecutionDto {
   @IsOptional()
   @IsDateString()
   finalBatchExpiringDate?: string;
+
+  @IsInt()
+  operatorId!: number;
 }
