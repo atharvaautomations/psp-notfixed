@@ -12,6 +12,16 @@ import { useExecutionTrackingDetail } from '@/hooks/useExecutionTrackingDetail';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
+function formatDateTime(dateStr?: string | null) {
+  if (!dateStr) return '—';
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return '—';
+  return date.toLocaleString(undefined, {
+    dateStyle: 'short',
+    timeStyle: 'medium',
+  });
+}
+
 function statusBadge(status?: string) {
   switch (status) {
     case 'COMPLETED':
@@ -73,7 +83,7 @@ function ProgressBar({ value }: { value: number }) {
   );
 }
 
-function ProcessSection({ title, data }: { title: string; data: any }) {
+function ProcessSection({ title, data, completionDate }: { title: string; data: any; completionDate?: string | null }) {
   if (!data) {
     return null;
   }
@@ -97,6 +107,17 @@ function ProcessSection({ title, data }: { title: string; data: any }) {
           {data.status}
         </span>
       </div>
+
+      {completionDate && (
+        <div className="mt-3 p-3 rounded-md bg-green-50 border border-green-200">
+          <p className="text-xs font-medium text-green-800 flex items-center gap-1">
+            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            Completed: <span className="font-mono">{formatDateTime(completionDate)}</span>
+          </p>
+        </div>
+      )}
 
       <div className="mt-5">
         <div className="mb-2 flex items-center justify-between text-sm">
@@ -386,7 +407,7 @@ function BatchCard({ batch }: { batch: any }) {
       {expanded && (
         <div className="border-t border-gray-100 bg-gray-50/50 p-6">
           {/* Batch Overview */}
-          <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-4">
             <div className="rounded-md bg-gray-50 p-4">
               <p className="text-xs text-gray-500">Current Process</p>
 
@@ -404,6 +425,18 @@ function BatchCard({ batch }: { batch: any }) {
 
               <p className="mt-1 font-semibold">
                 {batch.weighing?.progress ?? 0}% weighing
+              </p>
+            </div>
+
+            <div className="rounded-md bg-gray-50 p-4">
+              <p className="text-xs text-gray-500">Mixing Completed</p>
+
+              <p className="mt-1 font-semibold font-mono text-sm">
+                {batch.mixingExecution?.completedAt
+                  ? formatDateTime(batch.mixingExecution.completedAt)
+                  : batch.finalBatch?.mixingCompletedAt
+                    ? formatDateTime(batch.finalBatch.mixingCompletedAt)
+                    : '—'}
               </p>
             </div>
           </div>
@@ -451,14 +484,22 @@ function BatchCard({ batch }: { batch: any }) {
           {/* MASTER BATCH */}
           {batch.masterBatch && (
             <div className="mb-6">
-              <ProcessSection title="Master Batch" data={batch.masterBatch} />
+              <ProcessSection
+                title="Master Batch"
+                data={batch.masterBatch}
+                completionDate={batch.kneaderExecution?.completedAt || batch.masterBatch?.completedAt || null}
+              />
             </div>
           )}
 
           {/* FINAL BATCH */}
           {batch.finalBatch && (
             <div className="mb-6">
-              <ProcessSection title="Final Batch" data={batch.finalBatch} />
+              <ProcessSection
+                title="Final Batch"
+                data={batch.finalBatch}
+                completionDate={batch.mixingExecution?.completedAt || batch.finalBatch?.mixingCompletedAt || batch.finalBatch?.completedAt || null}
+              />
             </div>
           )}
 
