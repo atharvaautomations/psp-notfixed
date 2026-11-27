@@ -339,6 +339,7 @@ model Execution {
 
   operatorId Int?
   operator   User? @relation("ExecutionOperator", fields: [operatorId], references: [id])
+  operatorName String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -246,9 +246,10 @@ export class WeighingService {
   }
 
   async findAllExecutions(user?: { id: number; role?: string }) {
+    // Operators only see executions assigned to them via the Scheduling module.
     const where =
       user?.role === UserRole.OPERATOR
-        ? { operatorId: Number(user.id) }
+        ? { schedules: { some: { operatorId: Number(user.id) } } }
         : undefined;
 
     const executions = await this.prisma.execution.findMany({

@@ -45,15 +45,13 @@ interface ExecutionDialogProps {
   productionBatchNumber: string;
   masterBatchExpiringDate: string;
   finalBatchExpiringDate: string;
-  operatorId: string;
+  operatorName: string;
   recipeError?: string;
   versionError?: string;
   batchError?: string;
   productionBatchError?: string;
   operatorError?: string;
   finalBatchExpiringDateError?: string;
-  operators: { id: number; name: string }[];
-  operatorsLoading?: boolean;
   onRecipeChange: (value: string) => void;
   onVersionChange: (value: string) => void;
   onBatchCountChange: (value: string) => void;
@@ -74,14 +72,13 @@ export function ExecutionDialog({
   productionBatchNumber,
   masterBatchExpiringDate,
   finalBatchExpiringDate,
-  operatorId,
+  operatorName,
   recipeError,
   versionError,
   batchError,
   productionBatchError,
   operatorError,
   finalBatchExpiringDateError,
-  operatorsLoading,
   onRecipeChange,
   onVersionChange,
   onBatchCountChange,
@@ -90,7 +87,6 @@ export function ExecutionDialog({
   onFinalBatchExpiringDateChange,
   onOperatorChange,
   onSubmit,
-  operators,
 }: ExecutionDialogProps) {
   const [versions, setVersions] = useState<RecipeVersionRow[]>([]);
   const [loadingVersions, setLoadingVersions] = useState(false);
@@ -302,40 +298,12 @@ export function ExecutionDialog({
               <label className="text-sm font-medium text-gray-700">
                 Operator Name <span className="text-red-500">*</span>
               </label>
-              {operatorsLoading ? (
-                <Select value="" disabled>
-                  <SelectTrigger className="bg-white">
-                    <SelectValue placeholder="Loading operators..." />
-                  </SelectTrigger>
-                  <SelectContent />
-                </Select>
-              ) : operators.length === 0 ? (
-                <Select value="" disabled>
-                  <SelectTrigger className="bg-white">
-                    <SelectValue placeholder="No active operators available" />
-                  </SelectTrigger>
-                  <SelectContent />
-                </Select>
-              ) : (
-                <Select
-                  value={operatorId}
-                  onValueChange={onOperatorChange}
-                >
-                  <SelectTrigger className="bg-white">
-                    <SelectValue placeholder="Select operator" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {operators.map((operator) => (
-                      <SelectItem
-                        key={operator.id}
-                        value={String(operator.id)}
-                      >
-                        {operator.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
+              <Input
+                type="text"
+                value={operatorName}
+                onChange={(event) => onOperatorChange(event.target.value)}
+                placeholder="Enter operator name"
+              />
               {operatorError ? (
                 <p className="text-sm text-red-600">{operatorError}</p>
               ) : null}

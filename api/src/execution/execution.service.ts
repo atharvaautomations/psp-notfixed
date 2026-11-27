@@ -5,7 +5,6 @@ import {
   BatchProcessStatus,
   IngredientExecutionStatus,
   StepType,
-  UserRole,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateExecutionDto } from './dto/create-execution.dto';
@@ -65,39 +64,9 @@ export class ExecutionService {
           productionBatchNumber: dto.productionBatchNumber,
           masterBatchExpiringDate: dto.masterBatchExpiringDate ? new Date(dto.masterBatchExpiringDate) : null,
           finalBatchExpiringDate: dto.finalBatchExpiringDate ? new Date(dto.finalBatchExpiringDate) : null,
-          operatorId: dto.operatorId,
+          operatorName: dto.operatorName,
         },
       });
-
-      // Create schedule if operatorId is provided
-      if (dto.operatorId) {
-        const operator = await tx.user.findUnique({
-          where: { id: dto.operatorId },
-        });
-
-        if (!operator) {
-          throw new NotFoundException('Selected operator not found.');
-        }
-
-        if (operator.role !== UserRole.OPERATOR) {
-          throw new BadRequestException('Selected user is not an operator.');
-        }
-
-        if (!operator.isActive) {
-          throw new BadRequestException('Selected operator is inactive.');
-        }
-
-        await tx.executionSchedule.create({
-          data: {
-            scheduleCode: `SCH-${execution.executionCode}-${dto.operatorId}`,
-            executionId: execution.id,
-            operatorId: dto.operatorId,
-            scheduleDate: new Date(),
-            status: 'PENDING',
-            createdById: dto.operatorId,
-          },
-        });
-      }
 
       const batches = [];
 
@@ -277,12 +246,6 @@ export class ExecutionService {
       // Check if execution is in PENDING status (CREATED)
       if (execution.status !== ExecutionStatus.PENDING) {
         throw new BadRequestException('Execution can only be started from CREATED status.');
-      }
-
-      // Check if the user is the assigned operator
-      const schedule = execution.schedules[0];
-      if (!schedule || schedule.operatorId !== userId) {
-        throw new BadRequestException('Only the assigned operator can start this execution.');
       }
 
       // Validate bin quantities

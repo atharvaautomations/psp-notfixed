@@ -61,7 +61,7 @@ export function useCreateExecution() {
       recipeId: number;
       totalBatches: number;
       mode: 'BULK';
-      operatorId: number;
+      operatorName: string;
       productionBatchNumber?: string;
       masterBatchExpiringDate?: string;
       finalBatchExpiringDate?: string;
